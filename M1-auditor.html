@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ревизор</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .screen { min-height: 700px; }
+
+  /* ─── Промпт с кликабельными фрагментами ─── */
+  .bubble-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+  .prompt { background: var(--sand); border-radius: 16px 16px 4px 16px; padding: 14px 18px; font-size: 15px; line-height: 1.75; color: var(--dark); }
+  .frag { cursor: pointer; border-radius: 4px; padding: 1px 2px; transition: background 0.15s; -webkit-tap-highlight-color: transparent; }
+  .frag:hover { background: #E4DED2; }
+  .frag--safe { background: var(--white); cursor: default; }
+  .frag--safe:hover { background: var(--white); }
+  .frag--found { cursor: default; }
+  .frag--found:hover { background: transparent; }
+  .frag--found s { color: var(--red); text-decoration-thickness: 1.5px; }
+  .frag--found ins { text-decoration: none; background: var(--green-bg); border: 1px solid var(--green-border); color: var(--green); border-radius: 4px; padding: 0 3px; margin-left: 4px; }
+
+  /* ─── Счётчик ─── */
+  .counter { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--slate); }
+  .counter__dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--red); background: var(--white); }
+  .counter__dot--on { background: var(--red); }
+
+  /* ─── Разбор ─── */
+  .fb-zone { min-height: 155px; }
+  .fb-zone .hint {
+    font-size: 13px;
+    color: var(--slate);
+    text-align: center;
+    padding: 18px 10px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  @media (max-width: 560px) {
+    .screen { min-height: 1080px; }
+    .fb-zone { min-height: 245px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Ревизор: найдите три нарушения в промпте
+   Модуль 1 · страница «Безопасность и проверка».
+   Промпт разбит на фрагменты; три из них нарушают правила
+   (неопубликованные финансы, персональные данные, пароль).
+   Найденное нарушение зачёркивается и заменяется безопасной версией.
+   ========================================================= */
+
+var FRAGS = [
+  { t: 'Помоги подготовить короткий отчёт для директора по итогам квартала.',
+    fb: 'Здесь всё в порядке: это сама задача, она ничего не раскрывает.' },
+  { t: 'Выручка отдела — 48,2 млн ₽, эти цифры ещё не опубликованы.', bad: true, name: 'Финансы до публикации',
+    fix: 'Выручка отдела: [сумма], план перевыполнен.',
+    fb: 'Неопубликованные финансовые данные — коммерческая тайна. Нейросети не нужна точная сумма, чтобы написать отчёт: поставьте условное обозначение, а цифру подставьте сами в готовый текст.' },
+  { t: 'Структура: итоги, проблемы, планы на следующий квартал.',
+    fb: 'Здесь всё в порядке: структура отчёта ничего не раскрывает.' },
+  { t: 'Отдельно отметь проблему: Мария Соколова, оклад 140 000 ₽, второй месяц не выполняет план, и я думаю о её увольнении.', bad: true, name: 'Персональные данные',
+    fix: 'Отдельно отметь проблему: один из менеджеров второй месяц не выполняет план.',
+    fb: 'Имя вместе с окладом и планами на увольнение — персональные данные и чувствительная информация о человеке. Для отчёта достаточно «один из менеджеров».' },
+  { t: 'Тон деловой, объём — одна страница.',
+    fb: 'Здесь всё в порядке: требования к тону и объёму безопасны.' },
+  { t: 'Данные можешь сверить в CRM: логин o.ivanova, пароль Kvartal2026.', bad: true, name: 'Пароль',
+    fix: 'Данные я сверю сам.',
+    fb: 'Пароли не отправляйте никуда и никогда. Зайти в вашу CRM нейросеть всё равно не может, а пароль останется в истории чата на чужом сервере.' },
+  { t: 'Если чего-то не хватает, задай мне уточняющие вопросы.',
+    fb: 'Здесь всё в порядке: просьба задать вопросы — полезный приём, а не нарушение.' }
+];
+var TOTAL = 3;
+
+var state = { found: {}, safe: {}, last: null };
+
+/* ─── Типографика: неразрывные пробелы ─────────────────── */
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2 ');
+  return s.replace(/ — /g, ' — ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1 ');
+}
+
+function foundCount() {
+  var n = 0;
+  for (var k in state.found) n++;
+  return n;
+}
+
+/* ─── Части экрана ─────────────────────────────────────── */
+
+function promptHtml() {
+  var h = [];
+  for (var k = 0; k < FRAGS.length; k++) {
+    var f = FRAGS[k];
+    if (state.found[k]) h.push('<span class="frag frag--found"><s>' + f.t + '</s><ins>' + f.fix + '</ins></span>');
+    else if (state.safe[k]) h.push('<span class="frag frag--safe">' + f.t + '</span>');
+    else h.push('<span class="frag" onclick="pick(' + k + ')">' + f.t + '</span>');
+  }
+  return h.join(' ');
+}
+
+function counterHtml() {
+  var n = foundCount(), dots = '';
+  for (var k = 0; k < TOTAL; k++) dots += '<span class="counter__dot' + (k < n ? ' counter__dot--on' : '') + '"></span>';
+  return dots + '<span>Найдено ' + n + ' из ' + TOTAL + '</span>';
+}
+
+function feedbackHtml() {
+  if (state.last === null) return '<div class="hint">Нажмите на фрагмент промпта — здесь появится разбор.</div>';
+  var f = FRAGS[state.last];
+  if (!f.bad) {
+    return '<div class="feedback feedback--error"><div class="feedback__head">Неверно · нарушения нет</div>' + f.fb + '</div>';
+  }
+  var done = foundCount() === TOTAL;
+  return '<div class="feedback feedback--success"><div class="feedback__head">Верно · ' + f.name.toLowerCase() + '</div>' + f.fb
+    + (done ? '<div class="mt-xs"><b>Все три нарушения найдены.</b> Перечитайте исправленный промпт: задача осталась той же, и нейросеть справится с ней не хуже.</div>' : '')
+    + '</div>';
+}
+
+function render() {
+  document.getElementById('app').innerHTML = nb('<div class="page-wrap--compact screen anim-fade-up">'
+    + '<h2 class="section-title">Ревизор</h2>'
+    + '<p class="lead-text">Руководитель собирается отправить этот промпт в нейросеть. В нём три фрагмента, которые нельзя отправлять. Найдите их: нажмите на подозрительный фрагмент.</p>'
+    + '<div class="mt-md"><div class="bubble-label">Промпт</div><div id="prompt" class="prompt">' + promptHtml() + '</div></div>'
+    + '<div id="counter" class="counter mt-sm">' + counterHtml() + '</div>'
+    + '<div id="fbbox" class="fb-zone mt-sm">' + feedbackHtml() + '</div>'
+    + '<button class="btn btn--secondary btn--full mt-md" onclick="restart()">Пройти заново</button>'
+    + '</div>');
+  notifyHeight();
+}
+
+/* Нажатие обновляет блоки на месте: экран не вздрагивает */
+function pick(k) {
+  if (state.found[k] || state.safe[k]) return;
+  if (FRAGS[k].bad) state.found[k] = true; else state.safe[k] = true;
+  state.last = k;
+  document.getElementById('prompt').innerHTML = nb(promptHtml());
+  document.getElementById('counter').innerHTML = nb(counterHtml());
+  document.getElementById('fbbox').innerHTML = nb(feedbackHtml());
+  notifyHeight();
+}
+
+function restart() {
+  state = { found: {}, safe: {}, last: null };
+  render();
+}
+
+render();
+</script>
+</body>
+</html>

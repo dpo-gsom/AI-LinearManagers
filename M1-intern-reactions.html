@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Угадай реакцию стажёра</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* ─── Экран: фиксированная высота, чтобы iframe не прыгал ─── */
+  .screen { min-height: 760px; }
+  .screen__body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
+  /* ─── Ситуация ─── */
+  .case-card { padding: 0 2px; }
+  .case-title { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--dark); line-height: 1.25; margin-bottom: 6px; }
+  .case-text { font-size: 14px; line-height: 1.6; color: var(--slate); }
+
+  /* ─── Реплика в чате ─── */
+  .bubble-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+  .bubble { font-size: 14px; line-height: 1.6; padding: 12px 16px; }
+  .bubble--user { background: var(--sand); border-radius: 16px 16px 4px 16px; color: var(--dark); margin-left: 8%; }
+  .bubble--ai { background: var(--white); border: 1.5px solid var(--border); border-left: 4px solid var(--red); border-radius: 4px 16px 16px 16px; color: var(--slate); margin-right: 4%; }
+  .bubble-wrap--user { text-align: right; }
+  .bubble-wrap--user .bubble { text-align: left; }
+
+  /* ─── Варианты ─── */
+  .options { display: flex; flex-direction: column; gap: 8px; }
+  .opt { padding: 12px 14px; font-size: 14px; line-height: 1.45; color: var(--dark); }
+  .opt--locked { cursor: default; pointer-events: none; }
+
+  /* ─── Зона разбора ─── */
+  .fb-zone { min-height: 178px; }
+  .fb-zone .hint {
+    font-size: 13px;
+    color: var(--slate);
+    text-align: center;
+    padding: 18px 10px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-md);
+  }
+  .why-line { margin-top: 7px; }
+  .why-line .badge { margin-right: 6px; vertical-align: 1px; }
+
+  /* ─── Шпаргалка на вводном экране ─── */
+  .cheat { display: flex; flex-direction: column; gap: 6px; }
+  .cheat .opt { cursor: default; }
+  .cheat b { color: var(--dark); }
+  .cheat span { color: var(--slate); font-size: 13px; }
+
+  /* ─── Итог ─── */
+  .sum-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .sum-row:last-of-type { border-bottom: none; }
+  .sum-row__name { flex: 1; color: var(--dark); line-height: 1.35; }
+  .sum-row__name small { display: block; font-size: 12px; color: var(--slate); }
+  .mark { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .mark--ok   { background: var(--green-bg); border: 1.5px solid var(--green); color: var(--green); }
+  .mark--warn { background: var(--amber-bg); border: 1.5px solid var(--amber); color: var(--amber); }
+  .mark--bad  { background: var(--red-bg);   border: 1.5px solid var(--red);   color: var(--red);   }
+  .sum-verdict { font-size: 14px; line-height: 1.65; color: var(--slate); }
+  .sum-verdict b { color: var(--dark); }
+
+  @media (max-width: 560px) {
+    .screen { min-height: 985px; }
+    .bubble--user { margin-left: 0; }
+    .bubble--ai { margin-right: 0; }
+    .fb-zone { min-height: 293px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Угадай реакцию стажёра
+   Модуль 1 · страница «Как устроена нейросеть: стажёр-буквоед».
+   Пять промптов — пять свойств нейросети: выдумывает при нехватке данных,
+   не знает внутренних правил, галлюцинирует источники, забывает начало
+   длинного разговора, не знает событий после даты обучения.
+   ========================================================= */
+
+var CFG = {
+  title: 'Угадай реакцию',
+  titleSpan: 'стажёра',
+  intro: 'Нейросеть похожа на стажёра-буквоеда: начитанного и старательного, но знающего только то, что вы ему сказали. И он не любит признаваться, что чего-то не знает. Посмотрите на пять промптов и угадайте, что ответит нейросеть.',
+  progressLabel: 'Промпт',
+  question: 'Что, скорее всего, сделает нейросеть?',
+  nextLabel: 'Следующий промпт',
+  finalTitle: 'Как ведёт себя нейросеть',
+  allRight: 'Вы хорошо представляете, как ведёт себя нейросеть, — значит, её ошибки не застанут вас врасплох.',
+  someWrong: 'Стоит ещё раз перечитать на странице, что сказано про',
+  summary: 'Нейросеть пишет быстро и уверенно, но знает только то, что вы ей дали, и не отличает знание от догадки. Поэтому: <strong>давайте контекст, проверяйте факты, повторяйте важное в длинном разговоре и включайте поиск для свежих данных</strong>.'
+};
+
+var CASES = [
+  {
+    title: 'Отчёт без данных',
+    text: 'Руководитель торопится и просит нейросеть подготовить отчёт. Файл с цифрами не приложен.',
+    bubble: { who: 'user', text: 'Подготовь отчёт о продажах моего отдела за третий квартал: выполнение плана, лучшие менеджеры, причины отставания.' },
+    right: 'напишет отчёт без ваших данных',
+    badge: 'Выдумки',
+    why: 'Нейросеть не отличает знание от догадки. Если данных нет, она достраивает правдоподобное.',
+    options: [
+      { t: 'Попросит прислать данные и не начнёт без них', level: 'bad',
+        fb: 'Иногда нейросеть уточняет, но рассчитывать на это нельзя. Чаще она выполняет просьбу как может: о вашем отделе она не знает ничего, поэтому заполнит отчёт общими словами или правдоподобными цифрами.' },
+      { t: 'Напишет гладкий отчёт: общие фразы, а то и придуманные цифры и имена', level: 'ok',
+        fb: 'Нейросеть не знает ваших продаж, но задачу выполнит: заполнит отчёт общими словами, а иногда и правдоподобными цифрами и именами. Выглядит убедительно, а опереться не на что.' },
+      { t: 'Откажется: у неё нет доступа к системам компании', level: 'bad',
+        fb: 'Отказы бывают редко. Нейросеть старается помочь и выдаёт хоть что-то — общие слова или придуманные цифры.' }
+    ]
+  },
+  {
+    title: 'Письмо клиенту',
+    text: 'В компании принято: клиентам пишут на «Вы» с большой буквы, без смайликов и всегда называют срок, когда вернутся с ответом.',
+    bubble: { who: 'user', text: 'Напиши клиенту, что поставка задерживается на неделю.' },
+    right: 'напишет по общим правилам',
+    badge: 'Не знает ваших правил',
+    why: 'Всё, что принято в компании, но не написано в промпте, для нейросети не существует.',
+    options: [
+      { t: 'Напишет вежливое стандартное письмо — без ваших внутренних правил', level: 'ok',
+        fb: 'Нейросеть знает, как пишут деловые письма вообще, но не знает, как принято у вас. Если правила важны, напишите их в промпте.' },
+      { t: 'Напишет письмо по правилам компании: на «Вы» и с конкретным сроком ответа', level: 'bad',
+        fb: 'Откуда ей знать правила компании? Их нет ни в промпте, ни в открытых источниках. Нейросеть напишет вежливое письмо «как принято вообще», а ваши правила придётся добавить в промпт.' },
+      { t: 'Сначала спросит, какие правила переписки приняты в компании', level: 'bad',
+        fb: 'Сама нейросеть о правилах обычно не спрашивает: она не знает, что они у вас есть. Попросить её задать уточняющие вопросы можно — об этом приёме в разделе «Приёмы, которые работают».' }
+    ]
+  },
+  {
+    title: 'Ссылка на исследование',
+    text: 'Руководитель готовит презентацию для директора и хочет подкрепить идею цифрами. Поиск в интернете выключен.',
+    bubble: { who: 'user', text: 'Приведи исследование, которое доказывает, что гибкий график повышает продуктивность на 20%. Укажи авторов и год.' },
+    right: 'может выдумать источник',
+    badge: 'Галлюцинации',
+    why: 'Нейросеть пишет уверенно, даже когда ошибается. Проверять факты, цифры и ссылки — ваша работа.',
+    options: [
+      { t: 'Найдёт настоящее исследование и даст на него ссылку', level: 'bad',
+        fb: 'Без поиска нейросеть ничего не ищет — она пишет текст по памяти. А память у неё как у человека, который много читал: путает авторов, годы и цифры.' },
+      { t: 'Честно скажет, что точно такого исследования не знает', level: 'warn',
+        fb: 'Так бывает. Но нередко нейросеть выдаёт правдоподобное исследование с авторами и годом, которого не существует. Каждую ссылку нужно открывать и проверять.' },
+      { t: 'Назовёт правдоподобное исследование с авторами и годом — возможно, несуществующее', level: 'ok',
+        fb: 'Вы попросили конкретную цифру и авторов, и нейросеть постарается их дать. Если подходящего исследования нет, она может его сочинить: звучит солидно, а проверить не по чему. Такие выдумки называют галлюцинациями.' }
+    ]
+  },
+  {
+    title: 'Длинный разговор',
+    text: 'В начале чата руководитель попросил: «Отвечай коротко, до пяти пунктов, и не трогай раздел про бюджет». Дальше было сорок сообщений с правками большого документа.',
+    bubble: { who: 'user', text: 'Теперь пройдись по документу целиком и улучши его.' },
+    right: 'может забыть начальные указания',
+    badge: 'Ограниченная память',
+    why: 'В длинном разговоре нейросеть забывает начало. Новая задача — новый чат, важное — повторить.',
+    options: [
+      { t: 'Учтёт все указания из начала разговора', level: 'bad',
+        fb: 'Память нейросети ограничена. В длинном разговоре ранние сообщения учитываются хуже или вообще выпадают. Важные указания стоит повторить.' },
+      { t: 'Попросит начать новый чат, потому что разговор слишком длинный', level: 'bad',
+        fb: 'Некоторые сервисы предупреждают о лимите, но обычно нейросеть просто продолжает отвечать — и молча забывает начало.' },
+      { t: 'Может забыть указания из начала: ответить длинно и переписать раздел про бюджет', level: 'ok',
+        fb: 'Объём, который нейросеть удерживает в памяти, называют окном контекста. В длинном разговоре начало из него выпадает. Повторите важные указания или начните новый чат с короткой сводкой.' }
+    ]
+  },
+  {
+    title: 'Свежие новости',
+    text: 'Поиск в интернете выключен.',
+    bubble: { who: 'user', text: 'Какие изменения в трудовом законодательстве вступили в силу в этом месяце?' },
+    right: 'ответит по устаревшим данным',
+    badge: 'Знания до даты обучения',
+    why: 'Без поиска нейросеть не знает свежих событий. Для них включайте поиск и проверяйте источники.',
+    options: [
+      { t: 'Скажет, что не может ответить, и посоветует включить поиск', level: 'warn',
+        fb: 'Хорошие модели иногда так и делают. Но рассчитывать на это нельзя: часто нейросеть отвечает по старым данным и не предупреждает об этом.' },
+      { t: 'Расскажет то, что знала на момент обучения, — возможно, уже устаревшее', level: 'ok',
+        fb: 'Знания нейросети заканчиваются датой, когда её обучили. Для свежих новостей включите поиск в интернете и проверьте источники.' },
+      { t: 'Перечислит изменения, которые действуют в этом месяце', level: 'bad',
+        fb: 'Без поиска нейросеть знает мир только до даты обучения. О том, что случилось позже, она не знает, но может ответить так, будто знает.' }
+    ]
+  }
+];
+
+/* level: ok — верно, warn — допустимо, но не лучший вариант, bad — неверно */
+var state = { screen: 'intro', i: 0, answers: [] };
+
+/* ─── Типографика: неразрывные пробелы ─────────────────── */
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2 ');
+  return s.replace(/ — /g, ' — ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1 ');
+}
+
+/* ─── Варианты ──────────────────────────────────────────── */
+
+function rightIdx(c) {
+  for (var k = 0; k < c.options.length; k++) if (c.options[k].level === 'ok') return k;
+}
+
+function lockedClass(idx, ans) {
+  var c = CASES[state.i];
+  var cls = 'card opt opt--locked';
+  if (idx === rightIdx(c)) return cls + ' card--correct';
+  if (idx === ans) return cls + (c.options[idx].level === 'warn' ? ' card--warning' : ' card--wrong');
+  return cls + ' card--dimmed';
+}
+
+function optionsHtml() {
+  var c = CASES[state.i];
+  var ans = state.answers[state.i];
+  var h = '<div class="options">';
+  for (var k = 0; k < c.options.length; k++) {
+    if (ans === undefined) h += '<div class="card card--interactive opt" data-opt="' + k + '" onclick="pick(' + k + ')">' + c.options[k].t + '</div>';
+    else h += '<div class="' + lockedClass(k, ans) + '" data-opt="' + k + '">' + c.options[k].t + '</div>';
+  }
+  return h + '</div>';
+}
+
+/* ─── Разбор ────────────────────────────────────────────── */
+
+var FB_CLASS = { ok: 'feedback--success', warn: 'feedback--warning', bad: 'feedback--error' };
+
+function feedbackHtml(ans) {
+  if (ans === undefined) return '<div class="hint">Выберите ответ — здесь появится разбор.</div>';
+  var c = CASES[state.i];
+  var o = c.options[ans];
+  var head = o.level === 'ok' ? 'Верно · ' + c.right : (o.level === 'warn' ? 'Допустимо, но не лучший вариант' : 'Неверно · ' + c.right);
+  var why = c.why ? '<div class="why-line"><span class="badge badge--neutral">' + c.badge + '</span>' + c.why + '</div>' : '';
+  return nb('<div class="feedback ' + FB_CLASS[o.level] + '">'
+    + '<div class="feedback__head">' + head + '</div>'
+    + '<div>' + o.fb + '</div>' + why
+    + '</div>');
+}
+
+function progressHtml() {
+  return '<div class="progress">'
+    + '<div class="progress__meta">'
+    +   '<span class="progress__label">' + CFG.progressLabel + '</span>'
+    +   '<span class="progress__fraction"><em>' + (state.i + 1) + '</em> / ' + CASES.length + '</span>'
+    + '</div>'
+    + '<div class="progress__track"><div class="progress__fill" style="width:' + (state.i / CASES.length * 100) + '%"></div></div>'
+    + '</div>';
+}
+
+/* ─── Экраны ────────────────────────────────────────────── */
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    +   '<h1 class="page-title">' + CFG.title + '<span>' + CFG.titleSpan + '</span></h1>'
+    +   '<div class="divider"></div>'
+    +   '<p class="lead-text">' + CFG.intro + '</p>'
+    +   (CFG.introExtra || '')
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function bubbleHtml(c) {
+  if (!c.bubble) return '';
+  var user = c.bubble.who === 'user';
+  return '<div class="mt-sm bubble-wrap--' + (user ? 'user' : 'ai') + '">'
+    + '<div class="bubble-label">' + (user ? 'Промпт' : 'Ответ нейросети') + '</div>'
+    + '<div class="bubble bubble--' + (user ? 'user' : 'ai') + '">' + c.bubble.text + '</div>'
+    + '</div>';
+}
+
+function renderQuestion() {
+  var c = CASES[state.i];
+  var ans = state.answers[state.i];
+  return '<div class="screen__body">'
+    +   progressHtml()
+    +   '<div class="case-card mt-sm">'
+    +     '<div class="case-title">' + c.title + '</div>'
+    +     (c.text ? '<p class="case-text">' + c.text + '</p>' : '')
+    +   '</div>'
+    +   bubbleHtml(c)
+    +   '<div class="question-text mt-md">' + (c.question || CFG.question) + '</div>'
+    +   '<div id="optbox" class="mt-sm">' + optionsHtml() + '</div>'
+    +   '<div id="fbbox" class="fb-zone mt-sm">' + feedbackHtml(ans) + '</div>'
+    + '</div>'
+    + '<div class="nav-bar">'
+    +   '<button id="next-btn" class="btn btn--primary btn--full" onclick="next()"' + (ans === undefined ? ' disabled' : '') + '>'
+    +     (state.i === CASES.length - 1 ? 'К итогам →' : CFG.nextLabel + ' →')
+    +   '</button>'
+    + '</div>';
+}
+
+var MARK = { ok: '✓', warn: '~', bad: '✕' };
+
+function renderFinal() {
+  var rows = '', misses = [];
+  for (var n = 0; n < CASES.length; n++) {
+    var c = CASES[n];
+    var lv = c.options[state.answers[n]].level;
+    if (lv !== 'ok') misses.push(c.badge || c.title);
+    rows += '<div class="sum-row">'
+      + '<div class="sum-row__name">' + c.title + '<small>' + c.right.charAt(0).toUpperCase() + c.right.slice(1) + '</small></div>'
+      + '<span class="mark mark--' + lv + '">' + MARK[lv] + '</span>'
+      + '</div>';
+  }
+  var verdict = misses.length === 0 ? CFG.allRight : CFG.someWrong + ' <b>' + misses.join(', ').toLowerCase() + '</b>.';
+  return '<div class="screen__body">'
+    +   '<h2 class="section-title">' + CFG.finalTitle + '</h2>'
+    +   '<div class="divider"></div>'
+    +   rows
+    +   '<p class="sum-verdict mt-sm">' + verdict + '</p>'
+    +   '<div class="legend-box">'
+    +     '<span class="legend-tag">Итог</span>'
+    +     CFG.summary
+    +   '</div>'
+    + '</div>'
+    + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+}
+
+/* ─── Управление ────────────────────────────────────────── */
+
+function render() {
+  var body;
+  if (state.screen === 'intro') body = renderIntro();
+  else if (state.screen === 'q') body = renderQuestion();
+  else body = renderFinal();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+function start() {
+  state.screen = 'q';
+  state.i = 0;
+  state.answers = [];
+  render();
+}
+
+/* Выбор обновляет варианты и разбор на месте: экран не вздрагивает */
+function pick(idx) {
+  if (state.answers[state.i] !== undefined) return;
+  state.answers[state.i] = idx;
+  var opts = document.querySelectorAll('#optbox [data-opt]');
+  for (var k = 0; k < opts.length; k++) {
+    opts[k].className = lockedClass(k, idx);
+    opts[k].onclick = null;
+  }
+  document.getElementById('fbbox').innerHTML = feedbackHtml(idx);
+  document.getElementById('next-btn').disabled = false;
+  notifyHeight();
+}
+
+function next() {
+  if (state.i === CASES.length - 1) state.screen = 'final';
+  else state.i++;
+  render();
+}
+
+function restart() {
+  state.screen = 'intro';
+  state.i = 0;
+  state.answers = [];
+  render();
+}
+
+render();
+</script>
+</body>
+</html>

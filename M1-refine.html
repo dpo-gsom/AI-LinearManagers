@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Докрутите черновик</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* ─── Экран: фиксированная высота, чтобы iframe не прыгал ─── */
+  .screen { min-height: 785px; }
+  .screen__body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
+  /* ─── Ситуация ─── */
+  .case-card { padding: 0 2px; }
+  .case-title { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--dark); line-height: 1.25; margin-bottom: 6px; }
+  .case-text { font-size: 14px; line-height: 1.6; color: var(--slate); }
+
+  /* ─── Реплика в чате ─── */
+  .bubble-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+  .bubble { font-size: 14px; line-height: 1.6; padding: 12px 16px; }
+  .bubble--user { background: var(--sand); border-radius: 16px 16px 4px 16px; color: var(--dark); margin-left: 8%; }
+  .bubble--ai { background: var(--white); border: 1.5px solid var(--border); border-left: 4px solid var(--red); border-radius: 4px 16px 16px 16px; color: var(--slate); margin-right: 4%; }
+  .bubble-wrap--user { text-align: right; }
+  .bubble-wrap--user .bubble { text-align: left; }
+
+  /* ─── Варианты ─── */
+  .options { display: flex; flex-direction: column; gap: 8px; }
+  .opt { padding: 12px 14px; font-size: 14px; line-height: 1.45; color: var(--dark); }
+  .opt--locked { cursor: default; pointer-events: none; }
+
+  /* ─── Зона разбора ─── */
+  .fb-zone { min-height: 155px; }
+  .fb-zone .hint {
+    font-size: 13px;
+    color: var(--slate);
+    text-align: center;
+    padding: 18px 10px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-md);
+  }
+  .why-line { margin-top: 7px; }
+  .why-line .badge { margin-right: 6px; vertical-align: 1px; }
+
+  /* ─── Шпаргалка на вводном экране ─── */
+  .cheat { display: flex; flex-direction: column; gap: 6px; }
+  .cheat .opt { cursor: default; }
+  .cheat b { color: var(--dark); }
+  .cheat span { color: var(--slate); font-size: 13px; }
+
+  /* ─── Итог ─── */
+  .sum-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .sum-row:last-of-type { border-bottom: none; }
+  .sum-row__name { flex: 1; color: var(--dark); line-height: 1.35; }
+  .sum-row__name small { display: block; font-size: 12px; color: var(--slate); }
+  .mark { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .mark--ok   { background: var(--green-bg); border: 1.5px solid var(--green); color: var(--green); }
+  .mark--warn { background: var(--amber-bg); border: 1.5px solid var(--amber); color: var(--amber); }
+  .mark--bad  { background: var(--red-bg);   border: 1.5px solid var(--red);   color: var(--red);   }
+  .sum-verdict { font-size: 14px; line-height: 1.65; color: var(--slate); }
+  .sum-verdict b { color: var(--dark); }
+
+  @media (max-width: 560px) {
+    .screen { min-height: 1030px; }
+    .bubble--user { margin-left: 0; }
+    .bubble--ai { margin-right: 0; }
+    .fb-zone { min-height: 224px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Докрутите черновик
+   Модуль 1 · страница «Докрутка: первый ответ — это черновик».
+   Три шага по одному объявлению: конкретная правка вместо «переделай»,
+   добавить то, чего нейросеть знать не может, попросить варианты.
+   ========================================================= */
+
+var CFG = {
+  title: 'Докрутите',
+  titleSpan: 'черновик',
+  intro: 'Руководитель отдела Ольга попросила нейросеть написать объявление для команды: с понедельника еженедельные отчёты сдают не в пятницу вечером, а в четверг до 15:00. Первый ответ — черновик. Доведите его до рассылки за три шага.',
+  progressLabel: 'Шаг',
+  question: 'Что вы напишете нейросети?',
+  nextLabel: 'Следующий шаг',
+  finalTitle: 'Как вы докручивали',
+  allRight: 'Вы <b>правите точно</b>: называете, что исправить, и добавляете то, что знаете только вы.',
+  someWrong: 'Обратите внимание на шаги:',
+  summary: 'Первый ответ нейросети — черновик. Не пишите «переделай» и не начинайте с нуля: <strong>скажите, что именно исправить</strong>. А то, чего нейросеть знать не может — причины, сроки, ваше отношение к ситуации, — <strong>добавьте сами</strong>.'
+};
+
+var CASES = [
+  {
+    title: 'Черновик 1',
+    bubble: { who: 'ai', text: 'Уважаемые коллеги! Доводим до вашего сведения, что в целях оптимизации процессов внутренней отчётности и повышения эффективности взаимодействия между подразделениями принято решение о внесении изменений в порядок предоставления еженедельной отчётности. В связи с вышеизложенным просим принять к сведению, что с понедельника сроки сдачи отчётов изменяются. Надеемся на ваше понимание. С уважением, руководство.' },
+    right: 'конкретная правка',
+    badge: 'Конкретная правка',
+    options: [
+      { t: '«Плохо. Переделай»', level: 'bad',
+        fb: 'Нейросеть не знает, что именно плохо, и перепишет наугад — возможно, тем же языком. Назовите, что исправить: канцелярит, длину и пропавший новый срок.' },
+      { t: '«Перепиши простым языком, до пяти предложений. Обязательно укажи новый срок: четверг до 15:00. Подпись — Ольга, руководитель отдела»', level: 'ok',
+        fb: 'Вы назвали все три проблемы: канцелярит, длину и пропавший срок. Нейросеть исправит именно их.' },
+      { t: 'Открыть новый чат и написать промпт заново, подробнее', level: 'warn',
+        fb: 'Так можно, но долго: черновик уже есть, и структура в нём годится. Быстрее в этом же чате назвать, что исправить.' }
+    ]
+  },
+  {
+    title: 'Черновик 2',
+    bubble: { who: 'ai', text: 'Коллеги, привет! С понедельника меняем срок сдачи еженедельных отчётов: теперь их нужно присылать в четверг до 15:00. Отчёты, присланные позже, рассматриваться не будут. Прошу всех соблюдать новый срок. Ольга, руководитель отдела.' },
+    right: 'причина вместо угрозы',
+    badge: 'Причина вместо угрозы',
+    options: [
+      { t: '«Сделай тон помягче»', level: 'warn',
+        fb: 'Направление верное, но слишком общее: нейросеть смягчит слова, а угроза и вопрос «зачем?» останутся. Скажите конкретно: убрать фразу про опоздания и объяснить причину.' },
+      { t: '«Убери фразу про отчёты, присланные позже. Добавь причину: в пятницу утром я свожу отчёты отдела для директора, и мне нужно время их прочитать»', level: 'ok',
+        fb: 'Вы убрали резкость и дали нейросети то, чего она знать не могла, — причину. Её может назвать только сам руководитель.' },
+      { t: 'Отправить: срок указан, текст короткий', level: 'bad',
+        fb: 'Перечитайте глазами команды: срок сдвинули на сутки раньше, причину не объяснили, да ещё и пригрозили. Такое письмо вызовет вопросы и раздражение.' }
+    ]
+  },
+  {
+    title: 'Черновик 3',
+    bubble: { who: 'ai', text: 'Коллеги, привет! С понедельника меняем срок сдачи еженедельных отчётов: теперь их нужно присылать в четверг до 15:00. Причина простая: в пятницу утром я свожу отчёты отдела для директора, и мне нужно время, чтобы их прочитать. Спасибо, что поддерживаете! Ольга, руководитель отдела.' },
+    question: 'Текст готов. Что ещё можно попросить?',
+    right: 'варианты на выбор',
+    badge: 'Варианты на выбор',
+    options: [
+      { t: '«Перепиши ещё раз, вдруг станет лучше»', level: 'bad',
+        fb: 'Без конкретной цели переписывание ничего не улучшит, а может испортить то, что уже получилось. Текст готов, осталась тема письма.' },
+      { t: '«Сделай текст в два раза длиннее, чтобы звучало солиднее»', level: 'bad',
+        fb: 'Короткое письмо прочитают целиком, длинное — пролистают. Текст уже говорит всё нужное, осталась тема письма.' },
+      { t: '«Предложи три варианта темы письма»', level: 'ok',
+        fb: 'Хороший последний штрих: варианты нейросеть даёт за секунды, а выбор остаётся за вами. Так же удобно просить варианты заголовков, первых фраз, формулировок.' }
+    ]
+  }
+];
+
+/* level: ok — верно, warn — допустимо, но не лучший вариант, bad — неверно */
+var state = { screen: 'intro', i: 0, answers: [] };
+
+/* ─── Типографика: неразрывные пробелы ─────────────────── */
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2 ');
+  return s.replace(/ — /g, ' — ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1 ');
+}
+
+/* ─── Варианты ──────────────────────────────────────────── */
+
+function rightIdx(c) {
+  for (var k = 0; k < c.options.length; k++) if (c.options[k].level === 'ok') return k;
+}
+
+function lockedClass(idx, ans) {
+  var c = CASES[state.i];
+  var cls = 'card opt opt--locked';
+  if (idx === rightIdx(c)) return cls + ' card--correct';
+  if (idx === ans) return cls + (c.options[idx].level === 'warn' ? ' card--warning' : ' card--wrong');
+  return cls + ' card--dimmed';
+}
+
+function optionsHtml() {
+  var c = CASES[state.i];
+  var ans = state.answers[state.i];
+  var h = '<div class="options">';
+  for (var k = 0; k < c.options.length; k++) {
+    if (ans === undefined) h += '<div class="card card--interactive opt" data-opt="' + k + '" onclick="pick(' + k + ')">' + c.options[k].t + '</div>';
+    else h += '<div class="' + lockedClass(k, ans) + '" data-opt="' + k + '">' + c.options[k].t + '</div>';
+  }
+  return h + '</div>';
+}
+
+/* ─── Разбор ────────────────────────────────────────────── */
+
+var FB_CLASS = { ok: 'feedback--success', warn: 'feedback--warning', bad: 'feedback--error' };
+
+function feedbackHtml(ans) {
+  if (ans === undefined) return '<div class="hint">Выберите ответ — здесь появится разбор.</div>';
+  var c = CASES[state.i];
+  var o = c.options[ans];
+  var head = o.level === 'ok' ? 'Верно · ' + c.right : (o.level === 'warn' ? 'Допустимо, но не лучший вариант' : 'Неверно · ' + c.right);
+  var why = c.why ? '<div class="why-line"><span class="badge badge--neutral">' + c.badge + '</span>' + c.why + '</div>' : '';
+  return nb('<div class="feedback ' + FB_CLASS[o.level] + '">'
+    + '<div class="feedback__head">' + head + '</div>'
+    + '<div>' + o.fb + '</div>' + why
+    + '</div>');
+}
+
+function progressHtml() {
+  return '<div class="progress">'
+    + '<div class="progress__meta">'
+    +   '<span class="progress__label">' + CFG.progressLabel + '</span>'
+    +   '<span class="progress__fraction"><em>' + (state.i + 1) + '</em> / ' + CASES.length + '</span>'
+    + '</div>'
+    + '<div class="progress__track"><div class="progress__fill" style="width:' + (state.i / CASES.length * 100) + '%"></div></div>'
+    + '</div>';
+}
+
+/* ─── Экраны ────────────────────────────────────────────── */
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    +   '<h1 class="page-title">' + CFG.title + '<span>' + CFG.titleSpan + '</span></h1>'
+    +   '<div class="divider"></div>'
+    +   '<p class="lead-text">' + CFG.intro + '</p>'
+    +   (CFG.introExtra || '')
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function bubbleHtml(c) {
+  if (!c.bubble) return '';
+  var user = c.bubble.who === 'user';
+  return '<div class="mt-sm bubble-wrap--' + (user ? 'user' : 'ai') + '">'
+    + '<div class="bubble-label">' + (user ? 'Промпт' : 'Ответ нейросети') + '</div>'
+    + '<div class="bubble bubble--' + (user ? 'user' : 'ai') + '">' + c.bubble.text + '</div>'
+    + '</div>';
+}
+
+function renderQuestion() {
+  var c = CASES[state.i];
+  var ans = state.answers[state.i];
+  return '<div class="screen__body">'
+    +   progressHtml()
+    +   '<div class="case-card mt-sm">'
+    +     '<div class="case-title">' + c.title + '</div>'
+    +     (c.text ? '<p class="case-text">' + c.text + '</p>' : '')
+    +   '</div>'
+    +   bubbleHtml(c)
+    +   '<div class="question-text mt-md">' + (c.question || CFG.question) + '</div>'
+    +   '<div id="optbox" class="mt-sm">' + optionsHtml() + '</div>'
+    +   '<div id="fbbox" class="fb-zone mt-sm">' + feedbackHtml(ans) + '</div>'
+    + '</div>'
+    + '<div class="nav-bar">'
+    +   '<button id="next-btn" class="btn btn--primary btn--full" onclick="next()"' + (ans === undefined ? ' disabled' : '') + '>'
+    +     (state.i === CASES.length - 1 ? 'К итогам →' : CFG.nextLabel + ' →')
+    +   '</button>'
+    + '</div>';
+}
+
+var MARK = { ok: '✓', warn: '~', bad: '✕' };
+
+function renderFinal() {
+  var rows = '', misses = [];
+  for (var n = 0; n < CASES.length; n++) {
+    var c = CASES[n];
+    var lv = c.options[state.answers[n]].level;
+    if (lv !== 'ok') misses.push(c.badge || c.title);
+    rows += '<div class="sum-row">'
+      + '<div class="sum-row__name">' + c.title + '<small>' + c.right.charAt(0).toUpperCase() + c.right.slice(1) + '</small></div>'
+      + '<span class="mark mark--' + lv + '">' + MARK[lv] + '</span>'
+      + '</div>';
+  }
+  var verdict = misses.length === 0 ? CFG.allRight : CFG.someWrong + ' <b>' + misses.join(', ').toLowerCase() + '</b>.';
+  return '<div class="screen__body">'
+    +   '<h2 class="section-title">' + CFG.finalTitle + '</h2>'
+    +   '<div class="divider"></div>'
+    +   rows
+    +   '<p class="sum-verdict mt-sm">' + verdict + '</p>'
+    +   '<div class="legend-box">'
+    +     '<span class="legend-tag">Итог</span>'
+    +     CFG.summary
+    +   '</div>'
+    + '</div>'
+    + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+}
+
+/* ─── Управление ────────────────────────────────────────── */
+
+function render() {
+  var body;
+  if (state.screen === 'intro') body = renderIntro();
+  else if (state.screen === 'q') body = renderQuestion();
+  else body = renderFinal();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+function start() {
+  state.screen = 'q';
+  state.i = 0;
+  state.answers = [];
+  render();
+}
+
+/* Выбор обновляет варианты и разбор на месте: экран не вздрагивает */
+function pick(idx) {
+  if (state.answers[state.i] !== undefined) return;
+  state.answers[state.i] = idx;
+  var opts = document.querySelectorAll('#optbox [data-opt]');
+  for (var k = 0; k < opts.length; k++) {
+    opts[k].className = lockedClass(k, idx);
+    opts[k].onclick = null;
+  }
+  document.getElementById('fbbox').innerHTML = feedbackHtml(idx);
+  document.getElementById('next-btn').disabled = false;
+  notifyHeight();
+}
+
+function next() {
+  if (state.i === CASES.length - 1) state.screen = 'final';
+  else state.i++;
+  render();
+}
+
+function restart() {
+  state.screen = 'intro';
+  state.i = 0;
+  state.answers = [];
+  render();
+}
+
+render();
+</script>
+</body>
+</html>

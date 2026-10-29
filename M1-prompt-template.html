@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон промпта</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .screen { min-height: 1080px; }
+
+  /* ─── Поля ─── */
+  .field + .field { margin-top: 10px; }
+  .field label { display: block; font-size: 13px; font-weight: 700; color: var(--dark); margin-bottom: 4px; }
+  .field label small { font-weight: 400; color: var(--slate); }
+  .field textarea {
+    width: 100%;
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--dark);
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    resize: none;
+    height: 44px;
+  }
+  .field textarea:focus { outline: none; border-color: var(--dark); }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--slate); margin-top: 12px; cursor: pointer; }
+  .check input { margin-top: 3px; accent-color: var(--dark); }
+
+  /* ─── Готовый промпт ─── */
+  .bubble-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+  .preview {
+    background: var(--sand);
+    border-radius: 16px 16px 4px 16px;
+    padding: 12px 16px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--dark);
+    white-space: pre-wrap;
+    height: 190px;
+    overflow-y: auto;
+  }
+  .preview .ph { color: var(--red); }
+  .actions { display: flex; gap: 8px; }
+  .actions .btn { flex: 1; }
+  .status { font-size: 13px; color: var(--green); min-height: 20px; text-align: center; }
+
+  @media (max-width: 560px) {
+    .screen { min-height: 1360px; }
+    .status { min-height: 40px; }
+    .field textarea { height: 64px; }
+    .preview { height: 240px; }
+    .actions { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Шаблон промпта
+   Модуль 1 · страница «Практика: подготовка к вебинару».
+   Слушатель заполняет поля; пустые поля попадают в шаблон
+   подсказками в квадратных скобках. Результат можно скопировать
+   или скачать файлом. Черновик хранится в браузере слушателя.
+   ========================================================= */
+
+var FIELDS = [
+  { key: 'role',     label: 'Роль', hint: 'по желанию', line: 'Роль',
+    ph: 'Например: ты руководитель отдела, который пишет своей команде', empty: '' },
+  { key: 'task',     label: 'Что сделать и зачем', line: 'Задача',
+    ph: 'Например: письмо команде о переносе запуска. Цель — сохранить настрой', empty: '[что сделать и зачем]' },
+  { key: 'audience', label: 'Для кого', line: 'Для кого',
+    ph: 'Например: моя команда — восемь дизайнеров и редакторов', empty: '[для кого результат]' },
+  { key: 'source',   label: 'На чём основываться', line: 'Исходные данные',
+    ph: 'Например: запуск переносим на 15 марта, подрядчик не успевает', empty: '[факты, данные или приложенный документ]' },
+  { key: 'format',   label: 'Формат и объём', line: 'Формат и объём',
+    ph: 'Например: до 150 слов, в конце — список ближайших шагов', empty: '[формат и объём]' },
+  { key: 'limits',   label: 'Ограничения', line: 'Ограничения',
+    ph: 'Например: спокойный тон, без обвинений в адрес подрядчика', empty: '[чего избегать]' }
+];
+var ASK = 'Если чего-то не хватает, сначала задай мне уточняющие вопросы.';
+var STORE = 'ai-m1-prompt-template';
+
+var state = { values: {}, ask: true };
+
+/* Черновик хранится только в этом браузере; если хранилище недоступно, всё работает без него */
+function load() {
+  try {
+    var s = JSON.parse(localStorage.getItem(STORE) || 'null');
+    if (s) state = s;
+  } catch (e) {}
+}
+
+function save() {
+  try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
+}
+
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ─── Сборка промпта ───────────────────────────────────── */
+
+function lines() {
+  var out = [];
+  for (var k = 0; k < FIELDS.length; k++) {
+    var f = FIELDS[k];
+    var v = (state.values[f.key] || '').trim();
+    if (!v && !f.empty) continue;
+    out.push({ label: f.line, text: v || f.empty, ph: !v });
+  }
+  return out;
+}
+
+function promptText() {
+  var ls = lines(), t = [];
+  for (var k = 0; k < ls.length; k++) t.push(ls[k].label + ': ' + ls[k].text);
+  if (state.ask) t.push(ASK);
+  return t.join('\n');
+}
+
+function previewHtml() {
+  var ls = lines(), t = [];
+  for (var k = 0; k < ls.length; k++) {
+    t.push('<b>' + ls[k].label + ':</b> ' + (ls[k].ph ? '<span class="ph">' + esc(ls[k].text) + '</span>' : esc(ls[k].text)));
+  }
+  if (state.ask) t.push(ASK);
+  return t.join('\n');
+}
+
+/* ─── Экран ────────────────────────────────────────────── */
+
+function render() {
+  var fields = '';
+  for (var k = 0; k < FIELDS.length; k++) {
+    var f = FIELDS[k];
+    fields += '<div class="field"><label for="f-' + f.key + '">' + f.label + (f.hint ? ' <small>(' + f.hint + ')</small>' : '') + '</label>'
+      + '<textarea id="f-' + f.key + '" placeholder="' + esc(f.ph) + '" oninput="edit(\'' + f.key + '\', this.value)">' + esc(state.values[f.key] || '') + '</textarea></div>';
+  }
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">'
+    + '<h2 class="section-title">Ваш шаблон промпта</h2>'
+    + '<p class="lead-text">Заполните поля под свою задачу или оставьте пустыми — тогда в шаблоне останутся подсказки в квадратных скобках. Готовый текст скопируйте в нейросеть или скачайте файлом.</p>'
+    + '<div class="mt-sm">' + fields + '</div>'
+    + '<label class="check"><input type="checkbox" onchange="setAsk(this.checked)"' + (state.ask ? ' checked' : '') + '> Добавить в конце просьбу задать уточняющие вопросы</label>'
+    + '<div class="mt-md"><div class="bubble-label">Готовый промпт</div><div id="preview" class="preview">' + previewHtml() + '</div></div>'
+    + '<div class="actions mt-sm">'
+    +   '<button class="btn btn--primary" onclick="copyPrompt()">Скопировать</button>'
+    +   '<button class="btn btn--secondary" onclick="download()">Скачать файлом</button>'
+    + '</div>'
+    + '<div id="status" class="status mt-xs"></div>'
+    + '<button class="btn btn--secondary btn--full mt-sm" onclick="restart()">Начать заново</button>'
+    + '</div>';
+  notifyHeight();
+}
+
+function refresh() {
+  document.getElementById('preview').innerHTML = previewHtml();
+  document.getElementById('status').textContent = '';
+  save();
+}
+
+function edit(key, value) {
+  state.values[key] = value;
+  refresh();
+}
+
+function setAsk(on) {
+  state.ask = on;
+  refresh();
+}
+
+function status(text) {
+  document.getElementById('status').textContent = text;
+}
+
+/* Копирование: сначала современный способ, затем запасной через выделение текста */
+function copyPrompt() {
+  var text = promptText();
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    status(ok ? 'Скопировано. Вставьте текст в поле нейросети.' : 'Не получилось скопировать — выделите текст в окне выше и скопируйте вручную.');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() { status('Скопировано. Вставьте текст в поле нейросети.'); }, fallback);
+  } else {
+    fallback();
+  }
+}
+
+function download() {
+  var blob = new Blob([promptText()], { type: 'text/plain;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'shablon-prompta.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  status('Файл сохранён: shablon-prompta.txt');
+}
+
+function restart() {
+  state = { values: {}, ask: true };
+  save();
+  render();
+}
+
+load();
+render();
+</script>
+</body>
+</html>
