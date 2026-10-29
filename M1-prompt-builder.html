@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Соберите запрос</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .screen { min-height: 1125px; }
+
+  /* ─── Блоки запроса ─── */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { padding: 8px 14px; font-size: 13px; font-weight: 600; color: var(--dark); border-radius: 20px; }
+  .chip--on { border-color: var(--dark); background: var(--dark); color: var(--white); }
+  .chip--on:hover { background: var(--dark); }
+  .chip--role { border-style: dashed; }
+  .chip--role.chip--on { border-style: solid; }
+
+  /* ─── Переписка ─── */
+  .bubble-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+  .bubble { font-size: 14px; line-height: 1.6; padding: 12px 16px; }
+  .bubble--user { background: var(--sand); border-radius: 16px 16px 4px 16px; color: var(--dark); margin-left: 8%; }
+  .bubble--ai { background: var(--white); border: 1.5px solid var(--border); border-left: 4px solid var(--red); border-radius: 4px 16px 16px 16px; color: var(--slate); margin-right: 4%; min-height: 424px; }
+  .bubble--ai p + p { margin-top: 8px; }
+  .bubble--ai ol { padding-left: 20px; }
+  .bubble--ai li + li { margin-top: 4px; }
+  .bubble--ai b { color: var(--dark); }
+  .user-wrap { text-align: right; }
+  .user-wrap .bubble { text-align: left; }
+  mark { background: #FBE3A6; color: inherit; border-radius: 3px; padding: 0 1px; transition: background 0.6s; }
+
+  /* ─── Разбор ─── */
+  .fb-zone { min-height: 147px; }
+  .fb-zone .hint {
+    font-size: 13px;
+    color: var(--slate);
+    text-align: center;
+    padding: 18px 10px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-md);
+  }
+  .note { font-size: 12px; color: var(--slate); }
+
+  @media (max-width: 560px) {
+    .screen { min-height: 1665px; }
+    .bubble--user { margin-left: 0; }
+    .bubble--ai { margin-right: 0; min-height: 693px; }
+    .fb-zone { min-height: 216px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Соберите запрос: конструктор «до/после»
+   Модуль 1 · страница «Как поставить задачу нейросети».
+   Слушатель включает блоки запроса, ответ нейросети собирается
+   из заранее написанных частей; изменившиеся части подсвечиваются.
+   ========================================================= */
+
+var BLOCKS = [
+  { key: 'context', name: 'Ситуация',
+    text: 'Андрей, менеджер моего отдела, за месяц трижды опоздал на планёрку в 9:30. Раньше такого не было. Недавно он переехал за город.',
+    on: 'Ответ стал про Андрея и его опоздания. Без ситуации нейросеть не знала даже, о чём разговор, и написала советы про «сотрудника, который не справляется».',
+    off: 'Без ситуации ответ снова стал общим: нейросеть не знает, о чём разговор.' },
+  { key: 'goal', name: 'Цель',
+    text: 'Цель — чтобы он приходил вовремя и мы сохранили нормальные рабочие отношения.',
+    on: 'Концовка плана изменилась: вместо «поблагодарите за разговор» — договорённость о конкретном шаге. Нейросеть поняла, чем разговор должен закончиться.',
+    off: 'Без цели концовка снова расплывчатая: нейросеть не знает, чего вы хотите добиться.' },
+  { key: 'format', name: 'Формат и объём',
+    text: 'Нужен план разговора на 15 минут: четыре пункта, по одному-два предложения.',
+    on: 'Вместо длинного текста с общими словами — короткий план, который можно держать перед глазами. Без указания формата нейросеть часто пишет длинно «на всякий случай».',
+    off: 'Без формата ответ снова разросся: появились общие слова и лишние пункты.' },
+  { key: 'limits', name: 'Ограничения',
+    text: 'Без угроз и упоминания увольнения: это первый разговор.',
+    on: 'Из плана ушла угроза увольнения. Нейросеть не знает, что это первый разговор, и может предложить жёсткий сценарий по умолчанию.',
+    off: 'Без ограничений в плане снова появилась угроза увольнения.' },
+  { key: 'role', name: 'Роль', optional: true,
+    text: 'Ты опытный руководитель.',
+    on: 'Почти ничего не изменилось: другая первая фраза, содержание то же. Роль задаёт тон, но не заменяет ситуацию, цель и формат.',
+    off: 'Без роли ответ почти не изменился — только первая фраза.' }
+];
+
+/* Шаги плана: варианты текста зависят от включённых блоков */
+function steps(f) {
+  return [
+    { key: 's1', head: 'Подготовка и начало.',
+      text: f.context
+        ? 'Начните с фактов, без оценок: за месяц Андрей трижды опоздал на планёрку в 9:30, раньше такого не было.'
+        : 'Начните с нейтрального вступления и обозначьте тему разговора.',
+      fluff: 'Выберите спокойное место и время, чтобы никто не отвлекал.' },
+    { key: 's2', head: 'Выяснение причин.',
+      text: f.context
+        ? 'Спросите, что изменилось. Вы знаете, что он недавно переехал за город: уточните, не в дороге ли дело.'
+        : 'Выясните, по каким причинам сотрудник не справляется с работой.',
+      fluff: 'Задавайте открытые вопросы и не перебивайте.' },
+    { key: 's3', head: 'Последствия.',
+      text: f.limits
+        ? (f.context
+          ? 'Объясните, почему это важно: на планёрке распределяют задачи дня, и команде приходится его ждать.'
+          : 'Объясните, почему это важно для команды, — спокойно, без давления.')
+        : (f.context
+          ? 'Предупредите: если опоздания продолжатся, будут приняты дисциплинарные меры, вплоть до увольнения.'
+          : 'Обозначьте последствия: если ситуация не изменится, будут приняты дисциплинарные меры, вплоть до увольнения.'),
+      fluff: 'Сохраняйте уважительный тон.' },
+    { key: 's4', head: 'Завершение.',
+      text: f.goal
+        ? (f.context
+          ? 'Вместе найдите решение — например, подключаться к планёрке онлайн из электрички или сдвинуть начало его рабочего дня — и договоритесь, когда сверитесь снова.'
+          : 'Договоритесь о конкретном шаге и о дате, когда вернётесь к разговору.')
+        : (f.context
+          ? 'Подведите итог и попросите Андрея больше не опаздывать.'
+          : 'Подведите итог и поблагодарите сотрудника за разговор.'),
+      fluff: 'Убедитесь, что сотрудник вас понял.' }
+  ];
+}
+
+function intro(f) {
+  if (f.role) return f.format ? 'Как опытный руководитель, предлагаю такой план:' : 'Как опытный руководитель, скажу: такой разговор лучше хорошо подготовить. Вот что я рекомендую.';
+  return f.format ? 'План разговора на 15 минут:' : 'Разговор с сотрудником — важный инструмент руководителя. Ниже — рекомендации, которые помогут провести его эффективно.';
+}
+
+/* Ответ — список частей {key, html}; по ключам сравниваем с прошлым ответом */
+function answerParts(f) {
+  var parts = [{ key: 'intro', text: intro(f) }];
+  var st = steps(f);
+  for (var k = 0; k < st.length; k++) {
+    parts.push({ key: st[k].key, head: st[k].head, text: st[k].text, fluff: st[k].fluff });
+  }
+  if (!f.format) {
+    parts.push({ key: 'outro', text: 'Помните: каждый сотрудник уникален, и подход к нему должен быть индивидуальным.' });
+  }
+  return parts;
+}
+
+var state = { flags: {}, last: null, lastOn: false, prev: null };
+
+/* ─── Типографика: неразрывные пробелы ─────────────────── */
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2 ');
+  return s.replace(/ — /g, ' — ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1 ');
+}
+
+/* ─── Части экрана ─────────────────────────────────────── */
+
+function mk(text, changed) {
+  return changed ? '<mark>' + text + '</mark>' : text;
+}
+
+function promptHtml() {
+  var f = state.flags;
+  var out = [];
+  function add(key, text) { out.push(mk(text, state.lastOn && state.last === key)); }
+  if (f.role) add('role', BLOCKS[4].text);
+  if (f.context) add('context', BLOCKS[0].text);
+  out.push(f.context ? 'Напиши план разговора с ним.' : 'Напиши план разговора с сотрудником.');
+  if (f.format) add('format', BLOCKS[2].text);
+  if (f.goal) add('goal', BLOCKS[1].text);
+  if (f.limits) add('limits', BLOCKS[3].text);
+  return out.join(' ');
+}
+
+function answerHtml() {
+  var f = state.flags;
+  var parts = answerParts(f);
+  var prev = state.prev || {};
+  var now = {};
+  var h = '';
+  for (var k = 0; k < parts.length; k++) {
+    var p = parts[k];
+    now[p.key] = p.text;
+    /* При смене формата меняется вся структура ответа — подсвечивать нечего */
+    var changed = state.prev && prev.format === f.format && prev[p.key] !== p.text;
+    if (p.key === 'intro' || p.key === 'outro') { h += '<p>' + mk(p.text, changed) + '</p>'; continue; }
+    if (f.format) {
+      if (k === 1) h += '<ol>';
+      h += '<li>' + mk(p.text, changed) + '</li>';
+      if (k === parts.length - 1) h += '</ol>';
+    } else {
+      h += '<p><b>' + p.head + '</b> ' + mk(p.text, changed) + (p.fluff ? ' ' + p.fluff : '') + '</p>';
+    }
+  }
+  now.format = !!f.format;
+  state.prev = now;
+  return h;
+}
+
+function feedbackHtml() {
+  if (!state.last) return '<div class="hint">Добавьте в запрос блок — здесь появится разбор.</div>';
+  var b = blockByKey(state.last);
+  var text = state.lastOn ? b.on : b.off;
+  var all = true;
+  for (var k = 0; k < 4; k++) if (!state.flags[BLOCKS[k].key]) all = false;
+  var done = state.lastOn && all && !b.optional;
+  return '<div class="feedback ' + (done ? 'feedback--success' : 'feedback--info') + '">'
+    + '<div class="feedback__head">' + (state.lastOn ? '+ ' : '− ') + b.name + '</div>'
+    + text + (done ? ' Теперь это рабочий черновик: его осталось перечитать и подправить под себя.' : '')
+    + '</div>';
+}
+
+function chipsHtml() {
+  var h = '<div class="chips">';
+  for (var k = 0; k < BLOCKS.length; k++) {
+    var b = BLOCKS[k], on = !!state.flags[b.key];
+    h += '<button class="card card--interactive chip' + (b.optional ? ' chip--role' : '') + (on ? ' chip--on' : '') + '" onclick="toggle(\'' + b.key + '\')">'
+      + (on ? '✓ ' : '+ ') + b.name + (b.optional ? ' (по желанию)' : '') + '</button>';
+  }
+  return h + '</div>';
+}
+
+function blockByKey(key) {
+  for (var k = 0; k < BLOCKS.length; k++) if (BLOCKS[k].key === key) return BLOCKS[k];
+}
+
+/* ─── Управление ────────────────────────────────────────── */
+
+function render() {
+  state.prev = null;
+  document.getElementById('app').innerHTML = nb('<div class="page-wrap--compact screen anim-fade-up">'
+    + '<h2 class="section-title">Соберите запрос</h2>'
+    + '<p class="lead-text">Руководитель готовится к трудному разговору с сотрудником и просит нейросеть о помощи. Добавляйте в запрос блоки и смотрите, как меняется ответ.</p>'
+    + '<div id="chips" class="mt-sm">' + chipsHtml() + '</div>'
+    + '<div class="mt-md user-wrap"><div class="bubble-label">Запрос</div><div id="prompt" class="bubble bubble--user">' + promptHtml() + '</div></div>'
+    + '<div class="mt-sm"><div class="bubble-label">Ответ нейросети</div><div id="answer" class="bubble bubble--ai">' + answerHtml() + '</div></div>'
+    + '<p class="note mt-xs">Ответы подготовлены заранее и показывают, как обычно реагирует нейросеть.</p>'
+    + '<div id="fbbox" class="fb-zone mt-sm">' + feedbackHtml() + '</div>'
+    + '<button class="btn btn--secondary btn--full mt-md" onclick="restart()">Начать заново</button>'
+    + '</div>');
+  notifyHeight();
+}
+
+/* Переключение обновляет блоки на месте: экран не вздрагивает */
+function toggle(key) {
+  state.flags[key] = !state.flags[key];
+  state.last = key;
+  state.lastOn = state.flags[key];
+  document.getElementById('chips').innerHTML = nb(chipsHtml());
+  document.getElementById('prompt').innerHTML = nb(promptHtml());
+  document.getElementById('answer').innerHTML = nb(answerHtml());
+  document.getElementById('fbbox').innerHTML = nb(feedbackHtml());
+  notifyHeight();
+}
+
+function restart() {
+  state.flags = {};
+  state.last = null;
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
