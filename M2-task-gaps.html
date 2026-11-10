@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>На что сотрудник не получит ответа</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 1086px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .doc-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+  .bubble { font-size: 14px; line-height: 1.6; padding: 12px 16px; }
+  .bubble--user { background: var(--sand); border-radius: 16px 16px 4px 16px; color: var(--dark); margin-left: 8%; }
+  .bubble--ai { background: var(--white); border: 1.5px solid var(--border); border-left: 4px solid var(--red); border-radius: 4px 16px 16px 16px; color: var(--slate); }
+
+  .qs { display: flex; flex-direction: column; gap: 6px; }
+  .q { padding: 11px 14px; font-size: 14px; line-height: 1.45; color: var(--dark); display: flex; gap: 10px; align-items: flex-start; }
+  .q__t { flex: 1; }
+  .q__box { width: 18px; height: 18px; border: 1.5px solid var(--border); border-radius: 4px; flex-shrink: 0; margin-top: 1px; font-size: 12px; line-height: 15px; text-align: center; color: var(--white); }
+  .q--on .q__box { background: var(--red); border-color: var(--red); }
+  .q--still { cursor: default; pointer-events: none; }
+  .q--open { box-shadow: 0 0 0 2px var(--dark); }
+  .why-tag { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; padding-top: 1px; }
+
+  /* Зона разбора: зарезервирована до проверки, чтобы экран не рос */
+  .fb-hint { font-size: 13px; color: var(--slate); margin-bottom: 6px; min-height: 20px; }
+  .fb-zone { min-height: 176px; }
+  .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
+  .verdict b { color: var(--dark); }
+
+  @media (max-width: 560px) {
+    .screen { min-height: 1395px; }
+    .fb-zone { min-height: 265px; }
+    .bubble--user { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   На что сотрудник не получит ответа
+   Модуль 2 · страница «Вниз: поручение».
+   Экран 1: отметить вопросы, на которые в поручении нет ответа;
+   после проверки разбор — в одной зоне, по нажатию на вопрос.
+   Экран 2: поручение после доработки и приём «вопросы сотрудника».
+   ========================================================= */
+
+var DRAFT = 'Олег, подготовь, пожалуйста, сравнение CRM-систем (программ для учёта клиентов и сделок) для нашего отдела. Посмотри основные варианты на рынке и выбери лучший. Срок — пятница.';
+
+var QS = [
+  { short: 'кто отвечает', t: 'Кто отвечает за задачу?', gap: false, why: 'Ответ есть: Олег.' },
+  { short: 'какие системы сравнивать', t: 'Сколько систем и какие сравнивать?', gap: true, why: '«Основные варианты на рынке» — это три системы или пятнадцать?' },
+  { short: 'критерии', t: 'По каким критериям сравнивать?', gap: true, why: 'Цена, удобство, связка с почтой и учётом? Без критериев каждый сравнивает по-своему.' },
+  { short: 'для какого отдела', t: 'Для какого отдела сравнение?', gap: false, why: 'Ответ есть: для нашего.' },
+  { short: 'кто принимает решение', t: 'Я выбираю систему или только готовлю варианты для решения?', gap: true, why: '«Выбери лучший» звучит как решение, которое за Олегом. Вряд ли руководитель это имел в виду.' },
+  { short: 'формат результата', t: 'В каком виде сдать: таблица, презентация, письмо?', gap: true, why: 'Не указан формат результата — получите то, что Олегу удобнее.' },
+  { short: 'бюджет и ограничения', t: 'Есть ли бюджет и ограничения: требования ИТ, безопасности?', gap: true, why: 'Без рамок в сравнение попадут системы, которые компания не купит.' },
+  { short: 'срок', t: 'Когда нужен результат?', gap: false, why: 'Ответ есть: в пятницу. Хотя «к утру пятницы» или «к вечеру» стоило бы уточнить.' }
+];
+
+var BETTER = 'Олег, нам нужно выбрать CRM для отдела продаж — решение будем принимать с коммерческим директором. Подготовь, пожалуйста, сравнение 3–4 систем, которые можно купить в России. Критерии: стоимость за 15 пользователей в год, связка с нашей учётной системой и почтой, удобство для менеджеров (мобильное приложение, понятный интерфейс), требования нашего ИТ — уточни у Дениса. Результат — таблица на одну страницу и твоя рекомендация в двух-трёх предложениях. Срок — пятница, 12:00. Если по ходу поймёшь, что критерии не те, напиши мне сразу.';
+
+var state = { screen: 'task', picked: {}, checked: false, open: -1 };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2 ');
+  return s.replace(/ — /g, ' — ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1 ');
+}
+
+/* Подсвеченные после проверки: все пробелы и всё, что отмечено */
+function lit(k) { return QS[k].gap || !!state.picked[k]; }
+
+function qClass(k) {
+  var q = QS[k], on = !!state.picked[k];
+  if (!state.checked) return 'card card--interactive q' + (on ? ' q--on' : '');
+  var open = k === state.open ? ' q--open' : '';
+  if (q.gap && on) return 'card card--interactive q q--on card--correct' + open;
+  if (q.gap && !on) return 'card card--interactive q card--warning' + open;
+  if (!q.gap && on) return 'card card--interactive q q--on card--wrong' + open;
+  return 'card q q--still card--dimmed';
+}
+
+function qHtml(k) {
+  var tag = state.checked && lit(k) ? '<span class="why-tag">Почему? ›</span>' : '';
+  return '<span class="q__box">' + (state.picked[k] ? '✓' : '') + '</span><span class="q__t">' + QS[k].t + '</span>' + tag;
+}
+
+function verdictHtml() {
+  var missed = [], extra = [];
+  for (var j = 0; j < QS.length; j++) {
+    if (QS[j].gap && !state.picked[j]) missed.push(QS[j].short);
+    if (!QS[j].gap && state.picked[j]) extra.push(QS[j].short);
+  }
+  if (missed.length === 0 && extra.length === 0) return 'Вы увидели все пробелы поручения.';
+  return (missed.length ? 'Пропущено: <b>' + missed.join(', ') + '</b>. ' : 'Все пробелы найдены. ')
+    + (extra.length ? 'Лишнее: <b>' + extra.join(', ') + '</b> — ответ в поручении есть.' : '');
+}
+
+function zoneHtml() {
+  if (!state.checked) return '<div class="hint">После проверки здесь появится разбор.</div>';
+  var q = QS[state.open], on = !!state.picked[state.open];
+  var cls, head;
+  if (q.gap && on) { cls = 'feedback--success'; head = 'Верно · ' + q.short + ': ответа нет'; }
+  else if (q.gap) { cls = 'feedback--warning'; head = 'Пропущено · ' + q.short + ': ответа нет'; }
+  else { cls = 'feedback--error'; head = 'Неверно · ' + q.short + ': ответ есть'; }
+  return '<p class="verdict">' + verdictHtml() + '</p>'
+    + '<div class="feedback ' + cls + '"><div class="feedback__head">' + head + '</div>' + q.why + '</div>';
+}
+
+function renderTask() {
+  var list = '';
+  for (var k = 0; k < QS.length; k++)
+    list += '<div id="q-' + k + '" class="' + qClass(k) + '" onclick="tap(' + k + ')">' + qHtml(k) + '</div>';
+  var btn = state.checked
+    ? '<button class="btn btn--primary btn--full mt-md" onclick="toBetter()">Как исправить поручение →</button>'
+    : '<button class="btn btn--primary btn--full mt-md" onclick="check()">Проверить →</button>';
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">На что сотрудник <span>не получит ответа</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Руководитель отдела продаж отправил Олегу поручение. Отметьте вопросы, на которые Олег не найдёт ответа в тексте.</p>'
+    + '<div class="doc-label mt-md">Поручение</div>'
+    + '<div class="bubble bubble--user">' + DRAFT + '</div>'
+    + '<div class="doc-label mt-md">Вопросы Олега</div>'
+    + '<div class="qs">' + list + '</div>'
+    + '<div class="fb-hint mt-md">' + (state.checked ? 'Нажмите на подсвеченный вопрос, чтобы увидеть разбор.' : '') + '</div>'
+    + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
+    + '</div>' + btn;
+}
+
+function renderBetter() {
+  return '<div class="screen__body">'
+    + '<h2 class="section-title">Поручение после доработки</h2>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Каждый пробел — это вопрос, с которым Олег придёт к вам, или решение, которое он примет сам. Так поручение может выглядеть после доработки с нейросетью:</p>'
+    + '<div class="bubble bubble--ai mt-sm">' + BETTER + '</div>'
+    + '<div class="legend-box"><span class="legend-tag">Приём</span>Перед отправкой попросите нейросеть: <strong>«Представь, что ты сотрудник, который получил это поручение. Какие пять вопросов ты мне задашь?»</strong> Ответьте на них в тексте поручения — и вопросов не будет.</div>'
+    + '</div>'
+    + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+}
+
+function render() {
+  var body = state.screen === 'better' ? renderBetter() : renderTask();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+/* До проверки — отметка, после — открыть разбор. Обновляем на месте, без перерисовки экрана */
+function tap(k) {
+  if (!state.checked) {
+    state.picked[k] = !state.picked[k];
+    var el = document.getElementById('q-' + k);
+    el.className = qClass(k);
+    el.innerHTML = nb(qHtml(k));
+    return;
+  }
+  if (!lit(k)) return;
+  var prev = state.open;
+  state.open = k;
+  document.getElementById('q-' + prev).className = qClass(prev);
+  document.getElementById('q-' + k).className = qClass(k);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
+  notifyHeight();
+}
+
+/* Первым открываем проблемный пункт: пропущенный пробел, затем лишнюю отметку */
+function firstOpen() {
+  var k;
+  for (k = 0; k < QS.length; k++) if (QS[k].gap && !state.picked[k]) return k;
+  for (k = 0; k < QS.length; k++) if (!QS[k].gap && state.picked[k]) return k;
+  for (k = 0; k < QS.length; k++) if (QS[k].gap) return k;
+}
+
+function check() { state.checked = true; state.open = firstOpen(); render(); }
+function toBetter() { state.screen = 'better'; render(); }
+function restart() { state.screen = 'task'; state.picked = {}; state.checked = false; state.open = -1; render(); }
+
+render();
+</script>
+</body>
+</html>

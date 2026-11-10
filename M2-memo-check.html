@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Найдите три ошибки</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 1357px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .doc-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+  .doc { background: var(--cream); border: 1.5px dashed var(--border); border-radius: var(--radius-md); padding: 12px 16px; }
+  .notes { font-size: 14px; line-height: 1.6; color: var(--slate); }
+  .notes li { margin: 0 0 4px 18px; }
+
+  .memo { display: flex; flex-direction: column; gap: 6px; }
+  .sent { padding: 10px 14px; font-size: 14px; line-height: 1.5; color: var(--dark); display: flex; gap: 10px; align-items: flex-start; }
+  .sent__t { flex: 1; }
+  .sent--on { border-color: var(--red); background: var(--red-bg); }
+  .sent--still { cursor: default; pointer-events: none; }
+  .sent--open { box-shadow: 0 0 0 2px var(--dark); }
+  .why-tag { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; padding-top: 1px; }
+
+  /* Зона разбора: зарезервирована до проверки, чтобы экран не рос */
+  .fb-hint { font-size: 13px; color: var(--slate); margin-bottom: 6px; min-height: 20px; }
+  .fb-zone { min-height: 153px; }
+  .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
+  .verdict b { color: var(--dark); }
+  .counter { font-size: 13px; color: var(--slate); }
+  @media (max-width: 560px) { .screen { min-height: 1894px; } .fb-zone { min-height: 266px; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Найдите три ошибки
+   Модуль 2 · страница «Наверх: служебная записка».
+   Сверка служебки с заметками: найти три предложения, которых нет
+   в заметках или которые их искажают. После проверки разбор —
+   в одной зоне под запиской, по нажатию на подсвеченное предложение.
+   ========================================================= */
+
+var NOTES = [
+  'В ноябре–декабре прошлого года заказов было на 35% больше, чем в октябре.',
+  'Сейчас в смене 6 диспетчеров.',
+  'Жалобы на опоздания: в октябре прошлого года — 3, в декабре — 14.',
+  'Нужен временный диспетчер с 1 декабря по 31 января.',
+  'Через кадровое агентство — около 120 тыс. руб. в месяц.',
+  'Решение нужно до 20 ноября.'
+];
+
+var SENT = [
+  { short: 'просьба', t: 'Прошу согласовать привлечение временного диспетчера с 1 декабря по 31 января.', err: false,
+    why: 'Совпадает с заметками. Просьба стоит в первой строке — так и надо.' },
+  { short: 'рост заказов', t: 'В ноябре–декабре прошлого года заказов было на 35% больше, чем в октябре.', err: false,
+    why: 'Совпадает с заметками.' },
+  { short: '«в 14 раз больше»', t: 'В прошлом декабре жалоб на опоздания стало в 14 раз больше.', err: true,
+    why: 'Жалоб стало 14 вместо 3, то есть примерно в 4,7 раза больше. Нейросеть взяла число из заметок и сделала из него кратность.' },
+  { short: 'переработки диспетчеров', t: 'Все шесть диспетчеров уже сейчас регулярно работают сверхурочно.', err: true,
+    why: 'Про переработки в заметках ни слова. Звучит убедительно, но если директор спросит «сколько часов?», ответить будет нечем.' },
+  { short: 'стоимость', t: 'Стоимость — около 120 тыс. руб. в месяц через кадровое агентство, всего около 240 тыс. руб.', err: false,
+    why: 'Совпадает с заметками: 120 тысяч в месяц за два месяца.' },
+  { short: 'прогноз «жалоб вдвое меньше»', t: 'По нашей оценке, это сократит число жалоб вдвое.', err: true,
+    why: 'Такой оценки в заметках нет: нейросеть добавила прогноз, чтобы аргумент звучал сильнее. Под прогнозом подписываетесь вы, а обосновать его нечем.' },
+  { short: 'срок решения', t: 'Прошу принять решение до 20 ноября.', err: false,
+    why: 'Совпадает с заметками.' }
+];
+
+var NEED = 3;
+var state = { picked: {}, checked: false, open: -1 };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2 ');
+  return s.replace(/ — /g, ' — ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1 ');
+}
+
+function count() { var n = 0; for (var k in state.picked) if (state.picked[k]) n++; return n; }
+
+/* Подсвеченные после проверки: все ошибки и всё, что отмечено */
+function lit(k) { return SENT[k].err || !!state.picked[k]; }
+
+function sentClass(k) {
+  var s = SENT[k], on = !!state.picked[k];
+  if (!state.checked) return 'card card--interactive sent' + (on ? ' sent--on' : '');
+  var open = k === state.open ? ' sent--open' : '';
+  if (s.err && on) return 'card card--interactive sent card--correct' + open;
+  if (s.err && !on) return 'card card--interactive sent card--warning' + open;
+  if (!s.err && on) return 'card card--interactive sent card--wrong' + open;
+  return 'card sent sent--still card--dimmed';
+}
+
+function sentHtml(k) {
+  var tag = state.checked && lit(k) ? '<span class="why-tag">Почему? ›</span>' : '';
+  return '<span class="sent__t">' + SENT[k].t + '</span>' + tag;
+}
+
+function verdictHtml() {
+  var missed = [], extra = [];
+  for (var j = 0; j < SENT.length; j++) {
+    if (SENT[j].err && !state.picked[j]) missed.push(SENT[j].short);
+    if (!SENT[j].err && state.picked[j]) extra.push(SENT[j].short);
+  }
+  if (missed.length === 0) return 'Вы нашли все три утверждения, которых нет в заметках.';
+  return 'Пропущено: <b>' + missed.join(', ') + '</b>.'
+    + (extra.length ? ' Зря отмечено: <b>' + extra.join(', ') + '</b>.' : '');
+}
+
+function zoneHtml() {
+  if (!state.checked) return '<div class="hint">После проверки здесь появится разбор.</div>';
+  var s = SENT[state.open], on = !!state.picked[state.open];
+  var cls, head;
+  if (s.err && on) { cls = 'feedback--success'; head = 'Верно · ' + s.short + ': этого нет в заметках'; }
+  else if (s.err) { cls = 'feedback--warning'; head = 'Пропущено · ' + s.short + ': этого нет в заметках'; }
+  else { cls = 'feedback--error'; head = 'Неверно · ' + s.short + ': совпадает с заметками'; }
+  return '<p class="verdict">' + verdictHtml() + '</p>'
+    + '<div class="feedback ' + cls + '"><div class="feedback__head">' + head + '</div>' + s.why + '</div>';
+}
+
+function render() {
+  var notes = '';
+  for (var i = 0; i < NOTES.length; i++) notes += '<li>' + NOTES[i] + '</li>';
+  var memo = '';
+  for (var k = 0; k < SENT.length; k++)
+    memo += '<div id="s-' + k + '" class="' + sentClass(k) + '" onclick="tap(' + k + ')">' + sentHtml(k) + '</div>';
+  var bottom;
+  if (!state.checked) {
+    bottom = '<div class="nav-bar"><span class="counter" id="counter">Отмечено: ' + count() + ' из ' + NEED + '</span></div>'
+      + '<button id="check-btn" class="btn btn--primary btn--full mt-sm" onclick="check()"' + (count() === NEED ? '' : ' disabled') + '>Проверить →</button>';
+  } else {
+    bottom = '<div class="legend-box"><span class="legend-tag">Итог</span>'
+      + 'Нейросеть дописывает то, что <strong>обычно бывает</strong> в служебках. Сверяйте каждую цифру с заметками или поручите первую сверку ей самой: «Перечисли утверждения записки, которых нет в моих заметках».</div>'
+      + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+  }
+  var h = '<div class="screen__body">'
+    + '<h1 class="page-title">Найдите <span>три ошибки</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Руководитель службы доставки Марина набросала заметки и попросила нейросеть написать по ним служебную записку директору. В записке три предложения, которых нет в заметках или которые их искажают. Найдите их.</p>'
+    + '<div class="doc-label mt-md">Заметки Марины</div>'
+    + '<div class="doc"><ul class="notes">' + notes + '</ul></div>'
+    + '<div class="doc-label mt-md">Служебная записка от нейросети · нажмите на предложения с ошибками</div>'
+    + '<div class="memo">' + memo + '</div>'
+    + '<div class="fb-hint mt-md">' + (state.checked ? 'Нажмите на подсвеченное предложение, чтобы увидеть разбор.' : '') + '</div>'
+    + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
+    + '</div>' + bottom;
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(h) + '</div>';
+  notifyHeight();
+}
+
+/* До проверки — отметка, после — открыть разбор. Обновляем на месте, без перерисовки экрана */
+function tap(k) {
+  if (!state.checked) {
+    if (!state.picked[k] && count() >= NEED) return;
+    state.picked[k] = !state.picked[k];
+    var el = document.getElementById('s-' + k);
+    el.className = sentClass(k);
+    document.getElementById('counter').textContent = 'Отмечено: ' + count() + ' из ' + NEED;
+    document.getElementById('check-btn').disabled = count() !== NEED;
+    return;
+  }
+  if (!lit(k)) return;
+  var prev = state.open;
+  state.open = k;
+  document.getElementById('s-' + prev).className = sentClass(prev);
+  document.getElementById('s-' + k).className = sentClass(k);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
+  notifyHeight();
+}
+
+/* Первым открываем проблемный пункт: пропущенную ошибку, затем лишнюю отметку */
+function firstOpen() {
+  var k;
+  for (k = 0; k < SENT.length; k++) if (SENT[k].err && !state.picked[k]) return k;
+  for (k = 0; k < SENT.length; k++) if (!SENT[k].err && state.picked[k]) return k;
+  for (k = 0; k < SENT.length; k++) if (SENT[k].err) return k;
+}
+
+function check() { state.checked = true; state.open = firstOpen(); render(); }
+function restart() { state.picked = {}; state.checked = false; state.open = -1; render(); }
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Кому это письмо?</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 1101px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .item { margin-top: 16px; border-radius: var(--radius-md); }
+  .item__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .item__label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); }
+  .why-tag { font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; }
+  .item__text { background: var(--white); border: 1.5px solid var(--border); border-left: 4px solid var(--red); border-radius: 4px 16px 16px 16px; padding: 12px 16px; font-size: 14px; line-height: 1.6; color: var(--slate); }
+  .item--click { cursor: pointer; }
+  .item--click:hover .item__text { background: var(--sand); }
+  .item--open .item__text { box-shadow: 0 0 0 2px var(--dark); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { padding: 8px 12px; font-size: 13px; line-height: 1.3; color: var(--dark); border-radius: 18px; }
+  .chip.card--selected { border-color: var(--red); background: var(--red-bg); }
+  .chip--locked { cursor: inherit; pointer-events: none; }
+
+  /* Зона разбора: зарезервирована до проверки, чтобы экран не рос */
+  .fb-hint { font-size: 13px; color: var(--slate); margin-bottom: 6px; min-height: 20px; }
+  .fb-zone { min-height: 131px; }
+  .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
+  .verdict b { color: var(--dark); }
+  @media (max-width: 560px) { .screen { min-height: 1685px; } .fb-zone { min-height: 223px; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Кому это письмо?
+   Модуль 2 · страница «Тон и адресат».
+   Классификация: одна новость — три текста, каждому назначить адресата.
+   После проверки разбор — в одной зоне под текстами, по нажатию на текст.
+   ========================================================= */
+
+var AUD = ['Директору', 'Команде отдела', 'Новому сотруднику'];
+
+var ITEMS = [
+  { text: 'Коллеги, с 1 декабря заявки ведём в новой системе, а общую таблицу закрываем 30 ноября. До этого нужно две вещи: пройти часовое обучение (приглашение уже в календаре) и проверить, что у вас есть доступ. Первые две недели будет непривычно — пишите вопросы в общий чат, там дежурит Сергей.',
+    right: 1,
+    fb: [
+      'Директору не нужно знать про чат и приглашение в календаре. Ему важно, сколько это стоит и что даст. Этот текст — список действий для команды.',
+      'Даты, конкретные действия, к кому идти с вопросами, честное «будет непривычно». Команде нужно именно это.',
+      'Новичок не знает, что за таблица закрывается и зачем проверять доступ. Текст рассчитан на тех, кто уже работает по-старому, — на команду.'
+    ] },
+  { text: 'Все заявки клиентов мы ведём в системе учёта. Каждая заявка — это карточка: в ней видно, кто её взял, на каком она этапе и когда срок. Утром откройте раздел «Мои заявки» и начните с тех, у которых срок сегодня. Если что-то непонятно, спросите Сергея — он помогает всем с системой.',
+    right: 2,
+    fb: [
+      'Директору не объясняют, что такое карточка заявки. Это инструкция для новичка.',
+      'Команде не нужно объяснять, что такое заявка, ей важно, что меняется. А здесь ни слова о переходе: система описана так, будто была всегда. Это текст для новичка.',
+      'Объяснено с нуля, без «как было раньше», есть первый шаг на утро и к кому идти. Такой текст можно вставить в памятку для новичков.'
+    ] },
+  { text: 'С 1 декабря отдел сервиса переходит на систему учёта заявок. Затраты — 180 тыс. руб. на лицензии на год, в рамках утверждённого бюджета. Что получим: видно, в каком сроке каждая заявка, а месячный отчёт собирается за час вместо двух дней. Риск: первые две недели обработка может замедлиться, на это время поставщик системы выделил дежурную поддержку.',
+    right: 0,
+    fb: [
+      'Стоимость, бюджет, эффект в часах и днях, риск и что с ним делают. Директор прочитает это за полминуты и не будет задавать вопросов.',
+      'Команду не волнуют лицензии и бюджет, ей нужно знать, что делать. Стоимость, эффект и риски — это текст для директора.',
+      'Новичку не важно, сколько стоили лицензии, ему нужно понять, как работать в системе. Это текст для директора.'
+    ] }
+];
+
+var state = { screen: 'intro', pick: [], checked: false, open: -1 };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2 ');
+  return s.replace(/ — /g, ' — ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1 ');
+}
+
+function allPicked() { for (var i = 0; i < ITEMS.length; i++) if (state.pick[i] === undefined) return false; return true; }
+
+function chipClass(i, a) {
+  var p = state.pick[i];
+  if (!state.checked) return 'card card--interactive chip' + (p === a ? ' card--selected' : '');
+  if (a === ITEMS[i].right) return 'card chip chip--locked card--correct';
+  if (a === p) return 'card chip chip--locked card--wrong';
+  return 'card chip chip--locked card--dimmed';
+}
+
+function itemClass(i) {
+  if (!state.checked) return 'item';
+  return 'item item--click' + (i === state.open ? ' item--open' : '');
+}
+
+function itemHtml(i) {
+  var it = ITEMS[i], chips = '';
+  for (var a = 0; a < AUD.length; a++)
+    chips += '<div class="' + chipClass(i, a) + '" onclick="choose(' + i + ',' + a + ')">' + AUD[a] + '</div>';
+  return '<div id="item-' + i + '" class="' + itemClass(i) + '" onclick="openItem(' + i + ')">'
+    + '<div class="item__head"><span class="item__label">Текст ' + (i + 1) + '</span>'
+    + (state.checked ? '<span class="why-tag">Почему? ›</span>' : '') + '</div>'
+    + '<div class="item__text">' + it.text + '</div>'
+    + '<div class="chips" id="chips-' + i + '">' + chips + '</div></div>';
+}
+
+function verdictHtml() {
+  var miss = [];
+  for (var j = 0; j < ITEMS.length; j++) if (state.pick[j] !== ITEMS[j].right) miss.push('текст ' + (j + 1));
+  return miss.length === 0
+    ? 'Вы <b>видите адресата по содержанию</b>, а не только по тону.'
+    : 'Перечитайте <b>' + miss.join(', ') + '</b>: что в нём есть и чего нет.';
+}
+
+function zoneHtml() {
+  if (!state.checked) return '<div class="hint">После проверки здесь появится разбор.</div>';
+  var it = ITEMS[state.open], ok = state.pick[state.open] === it.right;
+  return '<p class="verdict">' + verdictHtml() + '</p>'
+    + '<div class="feedback ' + (ok ? 'feedback--success' : 'feedback--error') + '">'
+    + '<div class="feedback__head">' + (ok ? 'Верно' : 'Неверно') + ' · текст ' + (state.open + 1) + ' — ' + AUD[it.right].toLowerCase() + '</div>'
+    + it.fb[state.pick[state.open]] + '</div>';
+}
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">Кому это <span>письмо?</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">С 1 декабря отдел сервиса переходит из общей таблицы в систему учёта заявок. Руководитель отдела попросил нейросеть написать об этом трём разным адресатам. Определите, кому предназначен каждый текст.</p>'
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function renderTask() {
+  var items = '';
+  for (var i = 0; i < ITEMS.length; i++) items += itemHtml(i);
+  var bottom;
+  if (!state.checked) {
+    bottom = '<button id="check-btn" class="btn btn--primary btn--full mt-md" onclick="check()"' + (allPicked() ? '' : ' disabled') + '>Проверить →</button>';
+  } else {
+    bottom = '<div class="legend-box"><span class="legend-tag">Итог</span>'
+      + 'Разным читателям нужно <strong>разное содержание</strong>: директору — деньги, эффект и риски, команде — что сделать и к какому сроку, новичку — как всё устроено. Скажите нейросети, <strong>кто будет читать и что ему нужно</strong>.</div>'
+      + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+  }
+  return '<div class="screen__body">'
+    + '<p class="lead-text">Выберите адресата для каждого текста.</p>'
+    + items
+    + '<div class="fb-hint mt-md">' + (state.checked ? 'Нажмите на текст, чтобы увидеть разбор.' : '') + '</div>'
+    + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
+    + '</div>' + bottom;
+}
+
+function render() {
+  var body = state.screen === 'intro' ? renderIntro() : renderTask();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+/* Выбор обновляет только свой ряд и кнопку: экран не вздрагивает */
+function choose(i, a) {
+  if (state.checked) return;
+  state.pick[i] = a;
+  var box = document.getElementById('chips-' + i);
+  for (var k = 0; k < box.children.length; k++) box.children[k].className = chipClass(i, k);
+  document.getElementById('check-btn').disabled = !allPicked();
+  notifyHeight();
+}
+
+/* После проверки нажатие на текст открывает его разбор в общей зоне */
+function openItem(i) {
+  if (!state.checked || i === state.open) return;
+  var prev = state.open;
+  state.open = i;
+  document.getElementById('item-' + prev).className = itemClass(prev);
+  document.getElementById('item-' + i).className = itemClass(i);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
+  notifyHeight();
+}
+
+/* Первым открываем текст с неверным адресатом, если такой есть */
+function firstOpen() {
+  for (var i = 0; i < ITEMS.length; i++) if (state.pick[i] !== ITEMS[i].right) return i;
+  return 0;
+}
+
+function start() { state.screen = 'task'; state.pick = []; state.checked = false; state.open = -1; render(); }
+function check() { state.checked = true; state.open = firstOpen(); render(); }
+function restart() { state.screen = 'intro'; state.pick = []; state.checked = false; state.open = -1; render(); }
+
+render();
+</script>
+</body>
+</html>
