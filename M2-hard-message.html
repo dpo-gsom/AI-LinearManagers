@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Эмоциональный фильтр</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 769px; display: flex; flex-direction: column; }
+.screen__body { display: flex; flex-direction: column; }
+.case-card { padding: 0 2px; }
+.case-title { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--dark); line-height: 1.25; margin-bottom: 6px; }
+.case-text { font-size: 14px; line-height: 1.6; color: var(--slate); }
+.bubble-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+.bubble { font-size: 14px; line-height: 1.6; padding: 12px 16px; }
+.bubble--user { background: var(--sand); border-radius: 16px 16px 4px 16px; color: var(--dark); margin-left: 8%; }
+.bubble--ai { background: var(--white); border: 1.5px solid var(--border); border-left: 4px solid var(--red); border-radius: 4px 16px 16px 16px; color: var(--slate); margin-right: 4%; }
+.bubble--doc { background: var(--cream); border: 1.5px dashed var(--border); border-radius: var(--radius-md); color: var(--slate); }
+.bubble-wrap--user { text-align: right; }
+.bubble-wrap--user .bubble { text-align: left; }
+.options { display: flex; flex-direction: column; gap: 8px; }
+.opt { padding: 12px 14px; font-size: 14px; line-height: 1.45; color: var(--dark); }
+.opt--locked { cursor: default; pointer-events: none; }
+.fb-zone { min-height: 150px; }
+.fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+.sum-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.sum-row:last-of-type { border-bottom: none; }
+.sum-row__name { flex: 1; color: var(--dark); line-height: 1.35; }
+.sum-row__name small { display: block; font-size: 12px; color: var(--slate); }
+.mark { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.mark--ok   { background: var(--green-bg); border: 1.5px solid var(--green); color: var(--green); }
+.mark--warn { background: var(--amber-bg); border: 1.5px solid var(--amber); color: var(--amber); }
+.mark--bad  { background: var(--red-bg);   border: 1.5px solid var(--red);   color: var(--red);   }
+.sum-verdict { font-size: 14px; line-height: 1.65; color: var(--slate); }
+.sum-verdict b { color: var(--dark); }
+@media (max-width: 560px) {
+    .bubble--user { margin-left: 0; }
+  .bubble--ai { margin-right: 0; }
+  .fb-zone { min-height: 220px; }
+}
+  @media (max-width: 560px) { .screen { min-height: 988px; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* Модуль 2 · страница «Трудное сообщение». Ответ на резкое письмо смежника:
+   убрать эмоции и сохранить суть, не уйти в извинения, проверить глазами адресата. */
+
+var CFG = {
+  title: 'Эмоциональный ',
+  titleSpan: 'фильтр',
+  intro: 'Руководитель группы продаж Ирина получила от руководителя логистики письмо: «Ваши менеджеры опять обещают клиентам доставку за сутки! Сто раз говорили: минимум трое суток. Нам опять разгребать». Ирина знает, что двое новичков действительно ошиблись. Но «опять» и «сто раз» её задели. Помогите ей ответить.',
+  progressLabel: 'Шаг',
+  question: 'Что Ирине написать нейросети?',
+  nextLabel: 'Следующий шаг',
+  finalTitle: 'Как вы прошли через фильтр',
+  allRight: 'Вы <b>отделяете эмоции от сути</b>: признаёте ошибку, не берёте на себя лишнего и проверяете ответ глазами адресата.',
+  someWrong: 'Вернитесь к шагам:',
+  summary: 'Злость можно выплеснуть в черновик, а потом попросить нейросеть <strong>убрать эмоции, сохранив факты и просьбу</strong>. Но смягчить — не значит извиниться за всё. И перед отправкой <strong>прочитайте ответ глазами адресата</strong>.'
+};
+
+var CASES = [
+  {
+    title: 'Черновик Ирины',
+    bubbles: [
+      { who: 'doc', label: 'Черновик, написанный сгоряча', text: 'Во-первых, не «опять», а один раз за месяц, и это были новички. Во-вторых, где ваш регламент сроков? Мои люди его в глаза не видели! Ошибку исправим, но тон смените.' }
+    ],
+    right: 'убрать эмоции, сохранить суть',
+    options: [
+      { t: '«Перепиши спокойно и вежливо, но дай понять, что регламент сроков нам не присылали, а значит, ошибка не только наша»', level: 'bad',
+        fb: 'Нейросеть сохранит упрёк в вежливой форме, и переписка станет спором о том, кто виноват. Ирине нужно, чтобы ошибки прекратились, а не победа в переписке.' },
+      { t: '«Убери эмоции и оценки. Сохрани факты: двое новичков обещали доставку за сутки, сроки им не объяснили. И просьбу прислать регламент»', level: 'ok',
+        fb: 'Вы отделили суть от эмоций и дали нейросети факты и просьбу. Теперь она перепишет тон, а не содержание.' },
+      { t: '«Сделай вежливее и мягче, чтобы не обострять: деловой тон, без „во-первых“ и восклицательных знаков, обращение по имени»', level: 'warn',
+        fb: 'Тон станет мягче, но нейросеть не знает, что в черновике главное. Может пропасть просьба про регламент, а может остаться «тон смените», только в вежливой обёртке.' }
+    ]
+  },
+  {
+    title: 'Ответ нейросети',
+    bubbles: [
+      { who: 'ai', text: 'Приносим глубочайшие извинения за сложившуюся ситуацию! Мы полностью признаём свою вину и понимаем, какие неудобства доставили вашему отделу. Обещаем, что подобное больше никогда не повторится.' }
+    ],
+    right: 'признать своё, не больше',
+    options: [
+      { t: 'Отправить как есть: извинения — самый быстрый способ закрыть конфликт со смежниками, а отношения важнее', level: 'bad',
+        fb: 'Ирина «признала» вину целиком и пообещала то, что не может гарантировать. Пропали и факты, и просьба прислать регламент, а без них ошибка повторится.' },
+      { t: '«Убери „глубочайшие извинения“ и „не повторится“. Признай ошибку двух менеджеров и предложи инструктаж на этой неделе, если пришлют регламент»', level: 'ok',
+        fb: 'Вы сохранили баланс: своя часть ошибки признана, чужая на себя не взята, есть конкретное решение. Нейросеть часто извиняется слишком усердно — это нужно править.' },
+      { t: '«Сократи до трёх предложений и убери пафос, но сохрани извинения и обещание, что такое больше не повторится»', level: 'warn',
+        fb: 'Пафос уйдёт, но полное признание вины и обещание «не повторится» останутся. Ирина не может это гарантировать, а просьба про регламент так и не появилась.' }
+    ]
+  },
+  {
+    title: 'Перед отправкой',
+    bubbles: [
+      { who: 'ai', text: 'Добрый день! Вы правы: двое наших новых менеджеров обещали клиентам доставку за сутки — сроки им не объяснили. Пришлите, пожалуйста, регламент сроков, и на этой неделе я проведу с группой инструктаж. Спасибо, что сообщили.' }
+    ],
+    question: 'Ответ выглядит хорошо. Что ещё можно сделать?',
+    right: 'взгляд адресата',
+    options: [
+      { t: '«Прочитай ответ глазами руководителя логистики. Какие фразы могут его задеть или вызвать вопросы?»', level: 'ok',
+        fb: 'Взгляд со стороны помогает перед любым трудным письмом. Например, «сроки им не объяснили» можно прочитать как упрёк логистике. Решите, оставить это или переформулировать.' },
+      { t: '«Добавь в конце, что логистика тоже иногда срывает сроки, — мягко, без обвинений, чтобы разговор был на равных»', level: 'bad',
+        fb: 'Даже мягкая встречная претензия вернёт письмо к спору. Если у Ирины есть претензии к логистике, их лучше обсудить отдельно и с фактами.' },
+      { t: '«Проверь орфографию и пунктуацию, обратись к адресату по имени и добавь подпись с должностью и телефоном»', level: 'warn',
+        fb: 'Аккуратность не помешает, но главный риск трудного письма — не опечатки, а фраза, которая заденет адресата. Прочитайте ответ его глазами.' }
+    ]
+  }
+];
+
+/* ─── Механика: выбор ответа, разбор, итоги ─── */
+
+var state = { screen: 'intro', i: 0, answers: [] };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2 ');
+  return s.replace(/ — /g, ' — ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1 ');
+}
+
+function rightIdx(c) {
+  for (var k = 0; k < c.options.length; k++) if (c.options[k].level === 'ok') return k;
+}
+
+function lockedClass(idx, ans) {
+  var c = CASES[state.i];
+  var cls = 'card opt opt--locked';
+  if (idx === rightIdx(c)) return cls + ' card--correct';
+  if (idx === ans) return cls + (c.options[idx].level === 'warn' ? ' card--warning' : ' card--wrong');
+  return cls + ' card--dimmed';
+}
+
+function optionsHtml() {
+  var c = CASES[state.i];
+  var ans = state.answers[state.i];
+  var h = '<div class="options">';
+  for (var k = 0; k < c.options.length; k++) {
+    if (ans === undefined) h += '<div class="card card--interactive opt" data-opt="' + k + '" onclick="pick(' + k + ')">' + c.options[k].t + '</div>';
+    else h += '<div class="' + lockedClass(k, ans) + '" data-opt="' + k + '">' + c.options[k].t + '</div>';
+  }
+  return h + '</div>';
+}
+
+var FB_CLASS = { ok: 'feedback--success', warn: 'feedback--warning', bad: 'feedback--error' };
+
+function feedbackHtml(ans) {
+  if (ans === undefined) return '<div class="hint">Выберите ответ — здесь появится разбор.</div>';
+  var c = CASES[state.i];
+  var o = c.options[ans];
+  var head = o.level === 'ok' ? 'Верно · ' + c.right : (o.level === 'warn' ? 'Допустимо, но не лучший вариант' : 'Неверно · ' + c.right);
+  return nb('<div class="feedback ' + FB_CLASS[o.level] + '">'
+    + '<div class="feedback__head">' + head + '</div>'
+    + '<div>' + o.fb + '</div>'
+    + '</div>');
+}
+
+function progressHtml() {
+  return '<div class="progress">'
+    + '<div class="progress__meta">'
+    +   '<span class="progress__label">' + CFG.progressLabel + '</span>'
+    +   '<span class="progress__fraction"><em>' + (state.i + 1) + '</em> / ' + CASES.length + '</span>'
+    + '</div>'
+    + '<div class="progress__track"><div class="progress__fill" style="width:' + (state.i / CASES.length * 100) + '%"></div></div>'
+    + '</div>';
+}
+
+var LABEL = { user: 'Промпт', ai: 'Ответ нейросети', doc: 'Исходные данные' };
+
+function bubblesHtml(c) {
+  var list = c.bubbles || [];
+  var h = '';
+  for (var k = 0; k < list.length; k++) {
+    var b = list[k];
+    var label = b.label || LABEL[b.who];
+    h += '<div class="mt-sm bubble-wrap--' + b.who + '">'
+      + '<div class="bubble-label">' + label + '</div>'
+      + '<div class="bubble bubble--' + b.who + '">' + b.text + '</div>'
+      + '</div>';
+  }
+  return h;
+}
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    +   '<h1 class="page-title">' + CFG.title + '<span>' + CFG.titleSpan + '</span></h1>'
+    +   '<div class="divider"></div>'
+    +   '<p class="lead-text">' + CFG.intro + '</p>'
+    +   (CFG.introExtra || '')
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function renderQuestion() {
+  var c = CASES[state.i];
+  var ans = state.answers[state.i];
+  return '<div class="screen__body">'
+    +   progressHtml()
+    +   '<div class="case-card mt-sm">'
+    +     '<div class="case-title">' + c.title + '</div>'
+    +     (c.text ? '<p class="case-text">' + c.text + '</p>' : '')
+    +   '</div>'
+    +   bubblesHtml(c)
+    +   '<div class="question-text mt-md">' + (c.question || CFG.question) + '</div>'
+    +   '<div id="optbox" class="mt-sm">' + optionsHtml() + '</div>'
+    +   '<div id="fbbox" class="fb-zone mt-sm">' + feedbackHtml(ans) + '</div>'
+    + '</div>'
+    + '<div class="nav-bar">'
+    +   '<button id="next-btn" class="btn btn--primary btn--full" onclick="next()"' + (ans === undefined ? ' disabled' : '') + '>'
+    +     (state.i === CASES.length - 1 ? 'К итогам →' : CFG.nextLabel + ' →')
+    +   '</button>'
+    + '</div>';
+}
+
+var MARK = { ok: '✓', warn: '~', bad: '✕' };
+
+function renderFinal() {
+  var rows = '', misses = [];
+  for (var n = 0; n < CASES.length; n++) {
+    var c = CASES[n];
+    var lv = c.options[state.answers[n]].level;
+    if (lv !== 'ok') misses.push(c.right);
+    rows += '<div class="sum-row">'
+      + '<div class="sum-row__name">' + c.title + '<small>' + c.right.charAt(0).toUpperCase() + c.right.slice(1) + '</small></div>'
+      + '<span class="mark mark--' + lv + '">' + MARK[lv] + '</span>'
+      + '</div>';
+  }
+  var verdict = misses.length === 0 ? CFG.allRight : CFG.someWrong + ' <b>' + misses.join(', ') + '</b>.';
+  return '<div class="screen__body">'
+    +   '<h2 class="section-title">' + CFG.finalTitle + '</h2>'
+    +   '<div class="divider"></div>'
+    +   rows
+    +   '<p class="sum-verdict mt-sm">' + verdict + '</p>'
+    +   '<div class="legend-box">'
+    +     '<span class="legend-tag">Итог</span>'
+    +     CFG.summary
+    +   '</div>'
+    + '</div>'
+    + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+}
+
+function render() {
+  var body;
+  if (state.screen === 'intro') body = renderIntro();
+  else if (state.screen === 'q') body = renderQuestion();
+  else body = renderFinal();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+function start() { state.screen = 'q'; state.i = 0; state.answers = []; render(); }
+
+function pick(idx) {
+  if (state.answers[state.i] !== undefined) return;
+  state.answers[state.i] = idx;
+  var opts = document.querySelectorAll('#optbox [data-opt]');
+  for (var k = 0; k < opts.length; k++) { opts[k].className = lockedClass(k, idx); opts[k].onclick = null; }
+  document.getElementById('fbbox').innerHTML = feedbackHtml(idx);
+  document.getElementById('next-btn').disabled = false;
+  notifyHeight();
+}
+
+function next() {
+  if (state.i === CASES.length - 1) state.screen = 'final';
+  else state.i++;
+  render();
+}
+
+function restart() { state.screen = 'intro'; state.i = 0; state.answers = []; render(); }
+
+render();
+</script>
+</body>
+</html>

@@ -101,34 +101,57 @@ var state = { t: 0, m: 0, copied: false };
 function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
 function marked(s) { return esc(s).replace(/\[([^\]]+)\]/g, '<mark>[$1]</mark>'); }
 
-function render() {
-  var tasks = '', methods = '';
+function tasksHtml() {
+  var s = '';
   for (var i = 0; i < LIB.length; i++)
-    tasks += '<div class="card card--interactive chip' + (i === state.t ? ' card--selected' : '') + '" onclick="setT(' + i + ')">' + LIB[i].task + '</div>';
-  var ms = LIB[state.t].methods;
+    s += '<div class="card card--interactive chip' + (i === state.t ? ' card--selected' : '') + '" onclick="setT(' + i + ')">' + LIB[i].task + '</div>';
+  return s;
+}
+
+function methodsHtml() {
+  var s = '', ms = LIB[state.t].methods;
   for (var j = 0; j < ms.length; j++)
-    methods += '<div class="card card--interactive chip' + (j === state.m ? ' card--selected' : '') + '" onclick="setM(' + j + ')">' + ms[j].name + '</div>';
-  var m = ms[state.m];
+    s += '<div class="card card--interactive chip' + (j === state.m ? ' card--selected' : '') + '" onclick="setM(' + j + ')">' + ms[j].name + '</div>';
+  return s;
+}
+
+function noteText() {
+  return state.copied ? 'Скопировано. Вставьте в чат нейросети и заполните скобки.' : 'Не вставляйте в промпт персональные данные и коммерческую тайну.';
+}
+
+/* Экран рисуется один раз; клики обновляют блоки на месте */
+function render() {
+  var m = LIB[state.t].methods[state.m];
   var h = '<h1 class="page-title">Библиотека <span>промптов</span></h1>'
     + '<div class="divider"></div>'
     + '<p class="lead-text">Выберите задачу и приём. Скопируйте заготовку и замените то, что в квадратных скобках, своими данными.</p>'
-    + '<div class="step-label">1. Задача</div><div class="chips">' + tasks + '</div>'
-    + '<div class="step-label">2. Приём</div><div class="chips">' + methods + '</div>'
-    + '<p class="m-desc">' + m.desc + '</p>'
+    + '<div class="step-label">1. Задача</div><div class="chips" id="tasks">' + tasksHtml() + '</div>'
+    + '<div class="step-label">2. Приём</div><div class="chips" id="methods">' + methodsHtml() + '</div>'
+    + '<p class="m-desc" id="m-desc">' + m.desc + '</p>'
     + '<div class="step-label">3. Промпт</div>'
-    + '<div class="prompt">' + marked(m.p) + '</div>'
+    + '<div class="prompt" id="prompt">' + marked(m.p) + '</div>'
     + '<div class="copy-row"><button class="btn btn--primary" onclick="copy()">Скопировать</button>'
-    + '<span class="copy-note">' + (state.copied ? 'Скопировано. Вставьте в чат нейросети и заполните скобки.' : 'Не вставляйте в промпт персональные данные и коммерческую тайну.') + '</span></div>';
+    + '<span class="copy-note" id="copy-note">' + noteText() + '</span></div>';
   document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen">' + h + '</div>';
   notifyHeight();
 }
 
-function setT(i) { state.t = i; state.m = 0; state.copied = false; render(); }
-function setM(j) { state.m = j; state.copied = false; render(); }
+function update() {
+  var m = LIB[state.t].methods[state.m];
+  document.getElementById('tasks').innerHTML = tasksHtml();
+  document.getElementById('methods').innerHTML = methodsHtml();
+  document.getElementById('m-desc').innerHTML = m.desc;
+  document.getElementById('prompt').innerHTML = marked(m.p);
+  document.getElementById('copy-note').textContent = noteText();
+  notifyHeight();
+}
+
+function setT(i) { state.t = i; state.m = 0; state.copied = false; update(); }
+function setM(j) { state.m = j; state.copied = false; update(); }
 
 function copy() {
   var text = LIB[state.t].methods[state.m].p;
-  function done() { state.copied = true; render(); }
+  function done() { state.copied = true; document.getElementById('copy-note').textContent = noteText(); }
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(done, fallback);
   } else fallback();
