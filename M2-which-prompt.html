@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Какой промпт дал этот ответ</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 1052px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .case-title { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--dark); line-height: 1.25; margin-bottom: 4px; }
+  .doc-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+  .note { background: var(--cream); border: 1.5px dashed var(--border); border-radius: var(--radius-md); padding: 10px 14px; font-size: 14px; line-height: 1.55; color: var(--slate); }
+
+  .prompts { background: var(--sand); border-radius: 16px 16px 4px 16px; padding: 10px 14px; font-size: 13px; line-height: 1.5; color: var(--dark); }
+  .prompts__base { margin-bottom: 4px; }
+  .p-row { display: flex; gap: 8px; align-items: baseline; margin-top: 3px; }
+  .p-key { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--dark); color: var(--white); font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; }
+
+  .item { margin-top: 12px; border-radius: var(--radius-md); }
+  .item__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .item__label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); }
+  .why-tag { font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; margin-left: 8px; letter-spacing: 0; text-transform: none; }
+  .item__text { background: var(--white); border: 1.5px solid var(--border); border-left: 4px solid var(--red); border-radius: 4px 16px 16px 16px; padding: 10px 14px; font-size: 14px; line-height: 1.55; color: var(--slate); }
+  .item--click { cursor: pointer; }
+  .item--click:hover .item__text { background: var(--sand); }
+  .item--open .item__text { box-shadow: 0 0 0 2px var(--dark); }
+  .keys { display: flex; gap: 6px; flex-shrink: 0; }
+  .key { width: 34px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--dark); border-radius: 15px; }
+  .key.card--selected { border-color: var(--red); background: var(--red-bg); }
+  .key--locked { cursor: inherit; pointer-events: none; }
+
+  /* Зона разбора: зарезервирована до проверки, чтобы экран не рос */
+  .fb-hint { font-size: 13px; color: var(--slate); margin-bottom: 6px; min-height: 20px; }
+  .fb-zone { min-height: 165px; }
+  .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
+  .verdict b { color: var(--dark); }
+
+  .sum-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .sum-row__name { flex: 1; color: var(--dark); line-height: 1.35; }
+  .sum-row__name small { display: block; font-size: 12px; color: var(--slate); }
+  .mark { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .mark--ok  { background: var(--green-bg); border: 1.5px solid var(--green); color: var(--green); }
+  .mark--bad { background: var(--red-bg); border: 1.5px solid var(--red); color: var(--red); }
+  .signs { margin: 6px 0 0 18px; }
+  .signs li { margin-bottom: 6px; }
+
+  @media (max-width: 560px) { .screen { min-height: 1381px; } .fb-zone { min-height: 235px; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Какой промпт дал этот ответ
+   Модуль 2 · страница «Вниз: поручение».
+   Сопоставление: одна заметка, три промпта (отличаются одной фразой),
+   три поручения от нейросети. По тексту поручения определить промпт.
+   Три кейса на трёх экранах, затем итоги с подсказками, как читать ответ.
+   ========================================================= */
+
+var KEYS = ['А', 'Б', 'В'];
+
+var CASES = [
+  {
+    title: 'График отпусков',
+    who: 'Андрея, руководителя склада',
+    note: 'Свете — график отпусков на лето. В прошлом июле ушли сразу трое, смена не справлялась. Срок — 15 апреля.',
+    base: '«Сделай из заметки поручение для Светы»',
+    prompts: [
+      'больше ничего',
+      '+ «Если каких-то данных нет, не придумывай — отметь, что уточнить у меня»',
+      '+ «Добавь блок „Результат“: в каком виде сдать и как я пойму, что готово»'
+    ],
+    outs: [
+      { right: 2,
+        t: 'Света, подготовь, пожалуйста, график отпусков на лето к 15 апреля: в прошлом июле трое ушли сразу. Результат — таблица по неделям с фамилиями. Готово, если каждый подтвердил свои даты.',
+        fb: 'Выдают «Результат» и признак готовности. Остальное — из заметки. Но сколько человек могут отдыхать одновременно, так и не сказано.' },
+      { right: 0,
+        t: 'Света, подготовь, пожалуйста, график отпусков на июнь — август к 15 апреля. Одновременно в отпуске — не больше двух человек из смены, в июле — не больше одного. Согласуй даты с каждым.',
+        fb: '«Не больше двух», «в июле — не больше одного» — этого в заметке нет. Нейросеть сама решила за Андрея. Уверенная конкретика, которой вы не давали, — почерк промпта без рамок.' },
+      { right: 1,
+        t: 'Света, подготовь, пожалуйста, график отпусков на лето к 15 апреля: в прошлом июле трое ушли сразу. Сколько человек могут отдыхать одновременно — [уточнить]. Лето — с июня или с мая? [уточнить]',
+        fb: 'Пометки «[уточнить]» — след просьбы не придумывать. Нейросеть честно показала, каких решений не хватает.' }
+    ]
+  },
+  {
+    title: 'Выезд команды',
+    who: 'Натальи, руководителя отдела маркетинга',
+    note: 'Игорю — выезд команды на один день в мае, обсудить планы на второе полугодие. Нас 12 человек. Бюджет до 150 тыс.',
+    base: '«Сделай из заметки поручение для Игоря»',
+    prompts: [
+      '+ «Кратко, в три строки»',
+      '+ «Тон тёплый и мотивирующий»',
+      '+ «Проверь по SMART. Чего не хватает — не придумывай, отметь»'
+    ],
+    outs: [
+      { right: 1,
+        t: 'Игорь, привет! У меня для тебя интересная задача, уверена, ты справишься отлично. Хочу, чтобы в мае мы всей командой выбрались на день за город и обсудили планы. Бюджет — 150 тыс. Выбор за тобой!',
+        fb: 'Похвала и восклицательные знаки — тёплый тон. Факты на месте, но непонятно, что и когда сдать. А «выбор за тобой» Игорь может понять буквально и сам забронировать площадку.' },
+      { right: 2,
+        t: 'Игорь, организуй, пожалуйста, выезд команды (12 человек) на день в мае — обсудить планы на второе полугодие. Бюджет — до 150 тыс. руб. Результат: 2–3 площадки со сметой. Срок — [уточнить].',
+        fb: 'SMART виден по структуре: кто, сколько, бюджет, измеримый результат. А где в заметке пусто — срок, — нейросеть не придумала дату, а отметила пробел.' },
+      { right: 0,
+        t: 'Игорь, нужно организовать выезд команды на один день в мае: 12 человек, бюджет до 150 тыс. руб. Обсуждаем планы на второе полугодие. Подбери площадку и пришли мне варианты.',
+        fb: 'Всё из заметки и ничего сверх: сколько вариантов, к какому сроку и в каком виде, не сказано. Краткость сохранила факты и потеряла результат.' }
+    ]
+  },
+  {
+    title: 'Разбор жалоб',
+    who: 'Ольги, руководителя группы поддержки',
+    note: 'Марату — разобрать жалобы клиентов за квартал, понять, на что жалуются чаще всего. На этой неделе.',
+    base: '«Сделай из заметки поручение для Марата»',
+    prompts: [
+      'в начале: «Ты опытный руководитель»',
+      '+ «Контекст: это для планёрки директора во вторник, жалобы — в разделе „Обращения“ системы учёта»',
+      '+ «Объясни Марату, зачем это нужно»'
+    ],
+    outs: [
+      { right: 0,
+        t: 'Марат, прошу провести комплексный анализ жалоб клиентов за квартал согласно стандартам компании. Рассчитай динамику по месяцам и подготовь предложения по снижению жалоб на 20%. Срок — до пятницы.',
+        fb: '«Комплексный анализ», «стандарты компании», «снижение на 20%» — роль без контекста добавила канцелярит и задачи, которых не было. А нужен был список частых причин.' },
+      { right: 2,
+        t: 'Марат, разбери, пожалуйста, жалобы клиентов за квартал: на что жалуются чаще всего. Зачем: хочу выбрать одну-две причины, которыми команда займётся в следующем квартале. Срок — эта неделя.',
+        fb: 'Выдаёт строчка «Зачем». Но цель «выбрать одну-две причины» нейросеть сформулировала сама — проверьте, это ли вы имели в виду.' },
+      { right: 1,
+        t: 'Марат, разбери, пожалуйста, жалобы за квартал из раздела «Обращения» системы учёта: какие причины и сколько жалоб по каждой. Это пойдёт директору на планёрку во вторник. Срок — эта неделя.',
+        fb: 'Раздел «Обращения» и планёрку у директора нейросеть не могла придумать — они пришли из контекста. Точные детали появляются, только когда вы их дали.' }
+    ]
+  }
+];
+
+var state;
+function reset() { state = { screen: 'intro', i: 0, pick: [[], [], []], checked: [false, false, false], open: -1 }; }
+reset();
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2 ');
+  return s.replace(/ — /g, ' — ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1 ');
+}
+
+function cur() { return CASES[state.i]; }
+function picks() { return state.pick[state.i]; }
+function checked() { return state.checked[state.i]; }
+function allPicked() { for (var j = 0; j < 3; j++) if (picks()[j] === undefined) return false; return true; }
+function caseRight(i) { for (var j = 0; j < 3; j++) if (state.pick[i][j] !== CASES[i].outs[j].right) return false; return true; }
+
+function keyClass(j, a) {
+  var p = picks()[j];
+  if (!checked()) return 'card card--interactive key' + (p === a ? ' card--selected' : '');
+  if (a === cur().outs[j].right) return 'card key key--locked card--correct';
+  if (a === p) return 'card key key--locked card--wrong';
+  return 'card key key--locked card--dimmed';
+}
+
+function itemClass(j) {
+  if (!checked()) return 'item';
+  return 'item item--click' + (j === state.open ? ' item--open' : '');
+}
+
+function itemHtml(j) {
+  var keys = '';
+  for (var a = 0; a < 3; a++)
+    keys += '<div class="' + keyClass(j, a) + '" onclick="choose(' + j + ',' + a + ')">' + KEYS[a] + '</div>';
+  return '<div id="item-' + j + '" class="' + itemClass(j) + '" onclick="openItem(' + j + ')">'
+    + '<div class="item__head"><span class="item__label">Поручение ' + (j + 1)
+    + (checked() ? '<span class="why-tag">Почему? ›</span>' : '') + '</span>'
+    + '<div class="keys" id="keys-' + j + '">' + keys + '</div></div>'
+    + '<div class="item__text">' + cur().outs[j].t + '</div></div>';
+}
+
+function promptsHtml() {
+  var c = cur(), rows = '';
+  for (var a = 0; a < 3; a++) rows += '<div class="p-row"><span class="p-key">' + KEYS[a] + '</span><span>' + c.prompts[a] + '</span></div>';
+  return '<div class="prompts"><div class="prompts__base">Общее начало: ' + c.base + '. Отличие:</div>' + rows + '</div>';
+}
+
+function verdictHtml() {
+  var miss = [];
+  for (var j = 0; j < 3; j++) if (picks()[j] !== cur().outs[j].right) miss.push(j + 1);
+  if (!miss.length) return 'Вы <b>узнали все три промпта</b> по ответам.';
+  return 'Перечитайте <b>поручение ' + miss.join(' и ') + '</b>: какие фразы выдают промпт?';
+}
+
+function zoneHtml() {
+  if (!checked()) return '<div class="hint">После проверки здесь появится разбор.</div>';
+  var o = cur().outs[state.open], ok = picks()[state.open] === o.right;
+  return '<p class="verdict">' + verdictHtml() + '</p>'
+    + '<div class="feedback ' + (ok ? 'feedback--success' : 'feedback--error') + '">'
+    + '<div class="feedback__head">' + (ok ? 'Верно' : 'Неверно') + ' · поручение ' + (state.open + 1) + ' — промпт ' + KEYS[o.right] + '</div>'
+    + o.fb + '</div>';
+}
+
+function progressHtml() {
+  return '<div class="progress"><div class="progress__meta">'
+    + '<span class="progress__label">Кейс</span>'
+    + '<span class="progress__fraction"><em>' + (state.i + 1) + '</em> / ' + CASES.length + '</span></div>'
+    + '<div class="progress__track"><div class="progress__fill" style="width:' + (state.i / CASES.length * 100) + '%"></div></div></div>';
+}
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">Какой промпт <span>дал этот ответ</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">По одной и той же заметке нейросеть пишет очень разные поручения — всё решает промпт. В трёх кейсах промпты отличаются одной фразой. Определите по тексту поручения, какой промпт его дал.</p>'
+    + '<p class="lead-text">Смотрите, что нейросеть взяла из заметки, а что добавила сама.</p>'
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function renderCase() {
+  var c = cur(), items = '';
+  for (var j = 0; j < 3; j++) items += itemHtml(j);
+  var btn = checked()
+    ? '<button class="btn btn--primary btn--full mt-md" onclick="next()">' + (state.i === CASES.length - 1 ? 'К итогам →' : 'Следующий кейс →') + '</button>'
+    : '<button id="check-btn" class="btn btn--primary btn--full mt-md" onclick="check()"' + (allPicked() ? '' : ' disabled') + '>Проверить →</button>';
+  return '<div class="screen__body">'
+    + progressHtml()
+    + '<div class="case-title">' + c.title + '</div>'
+    + '<div class="doc-label mt-sm">Заметка ' + c.who + '</div>'
+    + '<div class="note">' + c.note + '</div>'
+    + '<div class="doc-label mt-sm">Промпты</div>'
+    + promptsHtml()
+    + items
+    + '<div class="fb-hint mt-md">' + (checked() ? 'Нажмите на поручение, чтобы увидеть разбор.' : 'Выберите промпт для каждого поручения.') + '</div>'
+    + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
+    + '</div>' + btn;
+}
+
+function renderFinal() {
+  var rows = '', miss = [];
+  for (var i = 0; i < CASES.length; i++) {
+    var ok = caseRight(i);
+    if (!ok) miss.push('«' + CASES[i].title + '»');
+    rows += '<div class="sum-row"><div class="sum-row__name">' + CASES[i].title
+      + '<small>' + (ok ? 'Узнали все три промпта' : 'Есть ошибки в сопоставлении') + '</small></div>'
+      + '<span class="mark mark--' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓' : '✕') + '</span></div>';
+  }
+  var verdict = miss.length === 0
+    ? 'Вы <b>узнаёте промпт по ответу</b>: видите, что нейросеть взяла из заметки, а что додумала сама.'
+    : 'Вернитесь к кейсам ' + miss.join(', ') + ': ищите в поручении то, чего не было в заметке.';
+  return '<div class="screen__body">'
+    + '<h2 class="section-title">Что выдаёт промпт</h2>'
+    + '<div class="divider"></div>'
+    + rows
+    + '<p class="verdict mt-sm">' + verdict + '</p>'
+    + '<div class="legend-box"><span class="legend-tag">Как читать ответ нейросети</span>'
+    + '<ul class="signs">'
+    + '<li><strong>Конкретика, которой вы не давали</strong> — цифры, ограничения, сроки — это догадка нейросети. Допишите в промпт: «Не придумывай, отметь, что уточнить у меня».</li>'
+    + '<li><strong>Тёплый тон и краткость</strong> не добавляют смысла. Проверьте, есть ли в поручении результат и срок.</li>'
+    + '<li><strong>Роль без контекста</strong> даёт канцелярит и лишние задачи. Точные детали появляются, только когда вы их дали.</li>'
+    + '</ul></div>'
+    + '</div>'
+    + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+}
+
+function render() {
+  var body = state.screen === 'intro' ? renderIntro() : state.screen === 'final' ? renderFinal() : renderCase();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+/* Выбор обновляет только свой ряд и кнопку: экран не вздрагивает */
+function choose(j, a) {
+  if (checked()) return;
+  picks()[j] = a;
+  var box = document.getElementById('keys-' + j);
+  for (var k = 0; k < box.children.length; k++) box.children[k].className = keyClass(j, k);
+  document.getElementById('check-btn').disabled = !allPicked();
+}
+
+/* После проверки нажатие на поручение открывает его разбор в общей зоне */
+function openItem(j) {
+  if (!checked() || j === state.open) return;
+  var prev = state.open;
+  state.open = j;
+  document.getElementById('item-' + prev).className = itemClass(prev);
+  document.getElementById('item-' + j).className = itemClass(j);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
+  notifyHeight();
+}
+
+/* Первым открываем поручение с неверным промптом, если такое есть */
+function firstOpen() {
+  for (var j = 0; j < 3; j++) if (picks()[j] !== cur().outs[j].right) return j;
+  return 0;
+}
+
+function start() { state.screen = 'case'; state.i = 0; render(); }
+function check() { state.checked[state.i] = true; state.open = firstOpen(); render(); }
+function next() {
+  if (state.i === CASES.length - 1) state.screen = 'final';
+  else { state.i++; state.open = -1; }
+  render();
+}
+function restart() { reset(); render(); }
+
+render();
+</script>
+</body>
+</html>
