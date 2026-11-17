@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Заголовок-вывод</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 628px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .item { margin-top: 16px; border-radius: var(--radius-md); }
+  .item__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .item__label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); }
+  .why-tag { font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; }
+  .slide { background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px 8px; }
+  .slide__title { font-size: 15px; font-weight: 700; line-height: 1.35; color: var(--dark); min-height: 42px; }
+  .slide__title--empty { font-weight: 400; color: var(--slate); opacity: .6; font-style: italic; }
+  .slide svg { display: block; width: 100%; height: 150px; margin-top: 6px; }
+  .opts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .opt { padding: 9px 12px; font-size: 13px; line-height: 1.4; color: var(--dark); }
+  .opt.card--selected { border-color: var(--red); background: var(--red-bg); }
+  .opt--locked { cursor: inherit; pointer-events: none; }
+
+  .fb-hint { font-size: 13px; color: var(--slate); margin-bottom: 6px; min-height: 20px; }
+  .fb-zone { min-height: 130px; }
+  .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
+  .verdict b { color: var(--dark); }
+  @media (max-width: 560px) { .screen { min-height: 752px; } .fb-zone { min-height: 190px; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Заголовок-вывод
+   Модуль 3 · страница «Рассказать: презентация».
+   Три шага: слайд с графиком и три заголовка: вывод из данных (зелёный),
+   тема (жёлтый: допустимо, но читатель ищет вывод сам), вывод не из данных (красный).
+   ========================================================= */
+
+var SLIDES = [
+  { chart: { type: 'bar', unit: ' млн', labels: ['I кв.', 'II кв.', 'III кв.', 'IV кв.'], values: [41, 43, 44, 52] },
+    opts: [
+      { t: 'Выручка компании по кварталам 2026 года, млн рублей', g: 'warn',
+        fb: 'Это тема, а не вывод. Читатель сам ищет на графике, что важно, и может увидеть не то. Заголовок-вывод экономит ему время.' },
+      { t: 'В IV квартале выручка выросла до 52 млн — на 18% больше, чем в III', g: 'ok',
+        fb: 'Заголовок говорит, что показывает график, и цифры проверяются по данным: 52 / 44 ≈ 1,18.' },
+      { t: 'Выручка выросла благодаря сильной команде продаж', g: 'bad',
+        fb: 'Про команду в данных ничего нет. Нейросеть часто дописывает правдоподобную причину. Если причину знаете вы, покажите её на отдельном слайде с данными.' }
+    ] },
+  { chart: { type: 'bar', unit: '%', labels: ['Сервис', 'Доставка', 'Склад', 'Продажи'], values: [4, 17, 6, 5] },
+    opts: [
+      { t: 'В доставке 17% заявок просрочены — втрое больше, чем в других отделах', g: 'ok',
+        fb: 'Вывод виден на графике, и «втрое» проверяется: у остальных отделов 4–6%.' },
+      { t: 'Доля просроченных заявок по отделам компании за ноябрь', g: 'warn',
+        fb: 'Это тема. Главное — доставка — читатель должен найти сам. Скажите это в заголовке.' },
+      { t: 'Доставке не хватает людей, поэтому 17% заявок просрочены', g: 'bad',
+        fb: 'Нехватка людей — гипотеза, в данных её нет. Проверьте её, прежде чем выносить в заголовок.' }
+    ] },
+  { chart: { type: 'line', unit: '%', labels: ['июл', 'авг', 'сен', 'окт', 'ноя', 'дек'], values: [2.1, 2.3, 2.2, 3.4, 3.9, 4.2] },
+    opts: [
+      { t: 'Отток клиентов вырос из-за повышения цен в октябре', g: 'bad',
+        fb: 'Про цены в данных ничего нет. Совпадение по времени — ещё не причина.' },
+      { t: 'Ежемесячный отток клиентов во втором полугодии, в процентах', g: 'warn',
+        fb: 'Это тема. Перелом в октябре читатель может и не заметить. Скажите о нём в заголовке.' },
+      { t: 'С октября отток растёт: в декабре он вдвое выше, чем летом', g: 'ok',
+        fb: 'Вывод виден на графике и проверяется: 4,2% в декабре против 2,1% в июле.' }
+    ] }
+];
+
+var state = { screen: 'intro', step: 0, pick: [] };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2&nbsp;');
+  return s.replace(/ — /g, '&nbsp;— ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1&nbsp;');
+}
+function fmt(v) { return String(v).replace('.', ','); }
+
+/* Простые графики на SVG: столбцы или линия */
+function chartSvg(c) {
+  var W = 600, H = 170, top = 22, bottom = 26, n = c.values.length;
+  var max = 0; for (var i = 0; i < n; i++) if (c.values[i] > max) max = c.values[i];
+  var h = H - top - bottom, step = W / n, out = '';
+  if (c.type === 'bar') {
+    var bw = Math.min(70, step * 0.5);
+    for (i = 0; i < n; i++) {
+      var bh = h * c.values[i] / max, x = step * i + (step - bw) / 2, y = top + h - bh;
+      out += '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + bh + '" rx="3" fill="#003B48"/>'
+        + '<text x="' + (x + bw / 2) + '" y="' + (y - 6) + '" text-anchor="middle" font-size="15" fill="#495761">' + fmt(c.values[i]) + c.unit + '</text>';
+    }
+  } else {
+    var pts = [];
+    for (i = 0; i < n; i++) {
+      var px = step * i + step / 2, py = top + h - h * c.values[i] / max;
+      pts.push(px + ',' + py);
+      out += '<circle cx="' + px + '" cy="' + py + '" r="4" fill="#003B48"/>'
+        + '<text x="' + px + '" y="' + (py - 9) + '" text-anchor="middle" font-size="15" fill="#495761">' + fmt(c.values[i]) + c.unit + '</text>';
+    }
+    out = '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#003B48" stroke-width="2.5"/>' + out;
+  }
+  for (i = 0; i < n; i++)
+    out += '<text x="' + (step * i + step / 2) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="15" fill="#495761">' + c.labels[i] + '</text>';
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img"><line x1="0" y1="' + (top + h) + '" x2="' + W + '" y2="' + (top + h) + '" stroke="#DDD8CF"/>' + out + '</svg>';
+}
+
+function grade(i) { var p = state.pick[i]; return p === undefined ? '' : SLIDES[i].opts[p].g; }
+function rightIdx(i) { for (var k = 0; k < 3; k++) if (SLIDES[i].opts[k].g === 'ok') return k; return 0; }
+function answered() { return state.pick[state.step] !== undefined; }
+
+function optClass(k) {
+  var i = state.step, p = state.pick[i], g = SLIDES[i].opts[k].g;
+  if (p === undefined) return 'card card--interactive opt';
+  if (g === 'ok') return 'card opt opt--locked card--correct';
+  if (k === p) return 'card opt opt--locked ' + (g === 'warn' ? 'card--warning' : 'card--wrong');
+  return 'card opt opt--locked card--dimmed';
+}
+function titleHtml(i) {
+  var p = state.pick[i];
+  return p === undefined
+    ? '<div class="slide__title slide__title--empty" id="title">Выберите заголовок</div>'
+    : '<div class="slide__title" id="title">' + SLIDES[i].opts[p].t + '</div>';
+}
+function zoneHtml() {
+  var i = state.step;
+  if (!answered()) return '<div class="hint">Здесь появится разбор.</div>';
+  var g = grade(i), o = SLIDES[i].opts[state.pick[i]];
+  var cls = g === 'ok' ? 'feedback--success' : (g === 'warn' ? 'feedback--warning' : 'feedback--error');
+  var head = g === 'ok' ? 'Верно · это вывод из данных' : (g === 'warn' ? 'Допустимо, но… · это тема, а не вывод' : 'Неверно · причины нет в данных');
+  return '<div class="feedback ' + cls + '"><div class="feedback__head">' + head + '</div>' + o.fb + '</div>';
+}
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">Заголовок-<span>вывод</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Руководитель готовит отчёт для директора и попросил нейросеть предложить заголовки к трём слайдам. К каждому слайду она дала три варианта. Выберите тот, который можно показывать директору.</p>'
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function renderStep() {
+  var i = state.step, s = SLIDES[i], opts = '';
+  for (var k = 0; k < s.opts.length; k++)
+    opts += '<div class="' + optClass(k) + '" onclick="choose(' + k + ')">' + s.opts[k].t + '</div>';
+  var last = i === SLIDES.length - 1;
+  return '<div class="screen__body">'
+    + '<div class="item__head"><span class="item__label">Слайд ' + (i + 1) + ' из ' + SLIDES.length + '</span></div>'
+    + '<div class="slide">' + titleHtml(i) + '%%SVG' + i + '%%</div>'
+    + '<div class="opts" id="opts">' + opts + '</div>'
+    + '<div id="fbbox" class="fb-zone mt-md">' + zoneHtml() + '</div>'
+    + '</div>'
+    + '<button id="next-btn" class="btn btn--primary btn--full mt-md" onclick="next()"' + (answered() ? '' : ' disabled') + '>'
+    + (last ? 'Итоги →' : 'Следующий слайд →') + '</button>';
+}
+
+function renderResult() {
+  var list = '', bad = 0, warn = 0;
+  for (var i = 0; i < SLIDES.length; i++) {
+    var g = grade(i); if (g === 'bad') bad++; if (g === 'warn') warn++;
+    var cls = g === 'ok' ? 'card--correct' : (g === 'warn' ? 'card--warning' : 'card--wrong');
+    list += '<div class="card opt opt--locked ' + cls + '"><b>Слайд ' + (i + 1) + '.</b> ' + SLIDES[i].opts[state.pick[i]].t + '</div>';
+  }
+  var verdict = !bad && !warn ? 'Ваши заголовки <b>говорят вывод</b>, и каждый можно проверить по графику.'
+    : (!bad ? 'Выдуманных причин нет. Но там, где отмечено жёлтым, вывод читателю придётся искать самому.'
+    : 'В заголовке, отмеченном красным, <b>причина, которой нет в данных</b>. Такие заголовки нейросеть пишет охотнее всего.');
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">Ваши <span>заголовки</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="verdict">' + verdict + '</p>'
+    + '<div class="opts">' + list + '</div>'
+    + '<div class="legend-box mt-md"><span class="legend-tag">Итог</span>'
+    + 'Заголовок слайда — <strong>вывод, который виден на графике</strong>. Тема заставляет читателя искать главное самому, а причина, которой нет в данных, подрывает доверие ко всему отчёту. Попросите нейросеть: «Заголовок каждого слайда — вывод одним предложением, только из этих данных».</div>'
+    + '</div>'
+    + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+}
+
+function render() {
+  var body = state.screen === 'intro' ? renderIntro() : (state.screen === 'result' ? renderResult() : renderStep());
+  /* SVG вставляем после nb(), чтобы неразрывные пробелы не попали в атрибуты */
+  var html = nb(body).replace(/%%SVG(\d)%%/g, function (m, d) { return chartSvg(SLIDES[+d].chart); });
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + html + '</div>';
+  notifyHeight();
+}
+
+/* Выбор обновляет варианты, заголовок слайда и зону разбора на месте */
+function choose(k) {
+  if (answered()) return;
+  var i = state.step;
+  state.pick[i] = k;
+  var box = document.getElementById('opts');
+  for (var j = 0; j < box.children.length; j++) box.children[j].className = optClass(j);
+  var t = document.getElementById('title');
+  t.className = 'slide__title';
+  t.innerHTML = nb(SLIDES[i].opts[k].t);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
+  document.getElementById('next-btn').disabled = false;
+  notifyHeight();
+}
+
+function next() {
+  if (state.step < SLIDES.length - 1) { state.step++; render(); }
+  else { state.screen = 'result'; render(); }
+}
+function start() { state.screen = 'task'; state.step = 0; state.pick = []; render(); }
+function restart() { state.screen = 'intro'; state.step = 0; state.pick = []; render(); }
+
+render();
+</script>
+</body>
+</html>

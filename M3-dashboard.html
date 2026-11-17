@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Личный дэшборд продаж</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 975px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .bar-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .bar-top select { font: inherit; font-size: 13px; color: var(--dark); padding: 7px 10px; border: 1.5px solid var(--border); border-radius: var(--radius-md); background: var(--white); flex: 1 1 140px; }
+  .src-line { font-size: 12px; color: var(--slate); margin-top: 8px; min-height: 18px; }
+  .src-line--error { color: var(--red); font-weight: 600; }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .tile { background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; }
+  .tile__label { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--slate); }
+  .tile__value { font-size: 20px; font-weight: 700; color: var(--dark); margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .panel { background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; margin-top: 10px; }
+  .panel__title { font-size: 13px; font-weight: 700; color: var(--dark); margin-bottom: 8px; }
+  .cols { display: flex; align-items: flex-end; gap: 6px; height: 150px; }
+  .col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+  .col__bar { width: 70%; background: var(--dark); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .col__val { font-size: 11px; color: var(--slate); margin-bottom: 3px; white-space: nowrap; }
+  .col__lbl { font-size: 11px; color: var(--slate); margin-top: 4px; white-space: nowrap; }
+  .hbars { height: 208px; }
+  .hbar { display: flex; align-items: center; gap: 8px; height: 26px; font-size: 12px; color: var(--slate); }
+  .hbar__name { width: 92px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hbar__track { flex: 1; height: 14px; }
+  .hbar__fill { height: 100%; background: var(--red); border-radius: 0 3px 3px 0; min-width: 2px; }
+  .hbar__val { width: 64px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .actions .btn { flex: 1 1 200px; }
+  .note { font-size: 12px; line-height: 1.55; color: var(--slate); margin-top: 10px; }
+  .note code { background: var(--sand); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  @media (max-width: 560px) { .screen { min-height: 1035px; } .tile__value { font-size: 16px; } .tiles { gap: 6px; } .tile { padding: 8px; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Личный дэшборд продаж — образец
+   Модуль 3 · страница «Показать: график и личный дэшборд».
+   Принимает CSV со столбцами Дата; Регион; Менеджер; Категория; Сумма.
+   Файл читается в браузере (FileReader) и никуда не отправляется.
+   ========================================================= */
+
+var COLS = ['Дата', 'Регион', 'Менеджер', 'Категория', 'Сумма'];
+var MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+/* Вымышленные данные: январь — июнь, три региона, шесть менеджеров */
+function sampleData() {
+  var seed = 7; function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+  var people = [['Менеджер 1', 'Москва'], ['Менеджер 2', 'Москва'], ['Менеджер 3', 'Северо-Запад'],
+    ['Менеджер 4', 'Северо-Запад'], ['Менеджер 5', 'Урал'], ['Менеджер 6', 'Урал']];
+  var cats = ['Оборудование', 'Сервис', 'Расходники'], base = [1.15, 0.95, 1.05, 0.9, 1.0, 0.7];
+  var rows = [];
+  for (var m = 0; m < 6; m++)
+    for (var p = 0; p < people.length; p++) {
+      var n = 3 + Math.floor(rnd() * 4);
+      if (p === 5 && m >= 3) n = 1; /* спад у одного менеджера — видно в разрезе */
+      for (var k = 0; k < n; k++)
+        rows.push({ d: new Date(2026, m, 1 + Math.floor(rnd() * 27)), r: people[p][1], m: people[p][0],
+          c: cats[Math.floor(rnd() * 3)], s: Math.round((80 + rnd() * 320) * base[p]) * 1000 });
+    }
+  return rows;
+}
+
+var state = { rows: sampleData(), source: 'Вымышленные данные: январь — июнь 2026', error: false, region: '', cat: '' };
+
+function fmtMoney(v) {
+  if (v >= 1e6) return (Math.round(v / 1e5) / 10).toString().replace('.', ',') + ' млн';
+  if (v >= 1e3) return Math.round(v / 1e3) + ' тыс.';
+  return String(Math.round(v));
+}
+function uniq(field) {
+  var seen = {}, out = [];
+  for (var i = 0; i < state.rows.length; i++) { var v = state.rows[i][field]; if (!seen[v]) { seen[v] = 1; out.push(v); } }
+  return out.sort();
+}
+function filtered() {
+  return state.rows.filter(function (x) {
+    return (!state.region || x.r === state.region) && (!state.cat || x.c === state.cat);
+  });
+}
+
+function optionsHtml(list, cur, all) {
+  var h = '<option value="">' + all + '</option>';
+  for (var i = 0; i < list.length; i++) h += '<option' + (list[i] === cur ? ' selected' : '') + '>' + list[i] + '</option>';
+  return h;
+}
+
+function tilesHtml(rows) {
+  var sum = 0; for (var i = 0; i < rows.length; i++) sum += rows[i].s;
+  var avg = rows.length ? sum / rows.length : 0;
+  return '<div class="tiles">'
+    + '<div class="tile"><div class="tile__label">Выручка</div><div class="tile__value">' + fmtMoney(sum) + '</div></div>'
+    + '<div class="tile"><div class="tile__label">Сделок</div><div class="tile__value">' + rows.length + '</div></div>'
+    + '<div class="tile"><div class="tile__label">Средний чек</div><div class="tile__value">' + fmtMoney(avg) + '</div></div>'
+    + '</div>';
+}
+
+/* Выручка по месяцам: последние 12 месяцев с данными */
+function monthsHtml(rows) {
+  var by = {}, keys = [];
+  for (var i = 0; i < rows.length; i++) {
+    var d = rows[i].d, key = d.getFullYear() * 100 + d.getMonth();
+    if (!(key in by)) { by[key] = 0; keys.push(key); }
+    by[key] += rows[i].s;
+  }
+  keys.sort(function (a, b) { return a - b; }); keys = keys.slice(-12);
+  var max = 0; for (i = 0; i < keys.length; i++) if (by[keys[i]] > max) max = by[keys[i]];
+  var h = '';
+  for (i = 0; i < keys.length; i++) {
+    var v = by[keys[i]];
+    h += '<div class="col"><div class="col__val">' + fmtMoney(v) + '</div>'
+      + '<div class="col__bar" style="height:' + (max ? Math.round(110 * v / max) : 0) + 'px"></div>'
+      + '<div class="col__lbl">' + MONTHS[keys[i] % 100] + '</div></div>';
+  }
+  return '<div class="panel"><div class="panel__title">Выручка по месяцам</div><div class="cols">' + (h || '<div class="note">Нет данных для выбранного среза.</div>') + '</div></div>';
+}
+
+/* Выручка по менеджерам: топ-8 */
+function managersHtml(rows) {
+  var by = {}, names = [];
+  for (var i = 0; i < rows.length; i++) {
+    if (!(rows[i].m in by)) { by[rows[i].m] = 0; names.push(rows[i].m); }
+    by[rows[i].m] += rows[i].s;
+  }
+  names.sort(function (a, b) { return by[b] - by[a]; }); names = names.slice(0, 8);
+  var max = names.length ? by[names[0]] : 0, h = '';
+  for (i = 0; i < names.length; i++)
+    h += '<div class="hbar"><span class="hbar__name" title="' + names[i] + '">' + names[i] + '</span>'
+      + '<span class="hbar__track"><span class="hbar__fill" style="display:block;width:' + Math.round(100 * by[names[i]] / max) + '%"></span></span>'
+      + '<span class="hbar__val">' + fmtMoney(by[names[i]]) + '</span></div>';
+  return '<div class="panel"><div class="panel__title">Выручка по менеджерам</div><div class="hbars">' + h + '</div></div>';
+}
+
+function render() {
+  var rows = filtered();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen">'
+    + '<div class="screen__body">'
+    + '<h1 class="page-title">Личный <span>дэшборд</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Так выглядит результат промпта с этой страницы. Переключайте разрезы или загрузите свой CSV-файл с теми же столбцами.</p>'
+    + '<div class="bar-top">'
+    + '<select onchange="setF(\'region\', this.value)">' + optionsHtml(uniq('r'), state.region, 'Все регионы') + '</select>'
+    + '<select onchange="setF(\'cat\', this.value)">' + optionsHtml(uniq('c'), state.cat, 'Все категории') + '</select>'
+    + '</div>'
+    + '<div class="src-line' + (state.error ? ' src-line--error' : '') + '">' + state.source + '</div>'
+    + tilesHtml(rows) + monthsHtml(rows) + managersHtml(rows)
+    + '<div class="actions">'
+    + '<label class="btn btn--primary" style="text-align:center">Загрузить свой CSV<input type="file" accept=".csv,text/csv" onchange="loadFile(this)" style="display:none"></label>'
+    + '<button class="btn btn--secondary" onclick="downloadSample()">Скачать пример CSV</button>'
+    + '</div>'
+    + '<p class="note">Нужные столбцы: <code>Дата</code> <code>Регион</code> <code>Менеджер</code> <code>Категория</code> <code>Сумма</code>. Разделитель — точка с запятой или запятая. Файл читается в вашем браузере и никуда не отправляется.</p>'
+    + '</div></div>';
+  notifyHeight();
+}
+
+function setF(k, v) { state[k] = v; render(); }
+
+/* ---------- Чтение CSV ---------- */
+function splitLine(line, sep) {
+  var out = [], cur = '', q = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line[i];
+    if (ch === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q; }
+    else if (ch === sep && !q) { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out.map(function (x) { return x.trim(); });
+}
+function parseDate(s) {
+  var m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  return null;
+}
+function parseNum(s) {
+  var v = parseFloat(s.replace(/[\s ₽]/g, '').replace(/руб\.?/i, '').replace(',', '.'));
+  return isNaN(v) ? null : v;
+}
+
+function parseCsv(text) {
+  var lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(function (l) { return l.trim() !== ''; });
+  if (lines.length < 2) return { error: 'В файле нет строк с данными.' };
+  var sep = lines[0].split(';').length >= lines[0].split(',').length ? ';' : ',';
+  var head = splitLine(lines[0], sep).map(function (h) { return h.toLowerCase(); });
+  var idx = [], missing = [];
+  for (var c = 0; c < COLS.length; c++) {
+    var k = head.indexOf(COLS[c].toLowerCase());
+    if (k < 0) missing.push('«' + COLS[c] + '»'); idx.push(k);
+  }
+  if (missing.length) return { error: 'Не найден столбец ' + missing.join(', ') + '. Переименуйте столбцы в файле и загрузите снова.' };
+  var rows = [], skipped = 0;
+  for (var i = 1; i < lines.length; i++) {
+    var f = splitLine(lines[i], sep), d = parseDate(f[idx[0]] || ''), s = parseNum(f[idx[4]] || '');
+    if (!d || s === null) { skipped++; continue; }
+    rows.push({ d: d, r: f[idx[1]] || '—', m: f[idx[2]] || '—', c: f[idx[3]] || '—', s: s });
+  }
+  if (!rows.length) return { error: 'Не удалось прочитать ни одной строки: проверьте формат даты (ДД.ММ.ГГГГ) и суммы.' };
+  return { rows: rows, skipped: skipped };
+}
+
+function loadFile(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function () {
+    var res = parseCsv(String(reader.result));
+    if (res.error) { state.error = true; state.source = res.error; }
+    else {
+      state.rows = res.rows; state.region = ''; state.cat = ''; state.error = false;
+      state.source = 'Ваш файл: ' + file.name + ', строк — ' + res.rows.length + (res.skipped ? ', пропущено — ' + res.skipped : '');
+    }
+    render();
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function downloadSample() {
+  var rows = sampleData(), out = [COLS.join(';')];
+  for (var i = 0; i < rows.length; i++) {
+    var d = rows[i].d;
+    out.push([('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear(),
+      rows[i].r, rows[i].m, rows[i].c, rows[i].s].join(';'));
+  }
+  var blob = new Blob(['﻿' + out.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'primer-prodazhi.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+render();
+</script>
+</body>
+</html>

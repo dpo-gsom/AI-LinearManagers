@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Сверка сборки</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 1040px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin: 14px 0 6px; }
+  .sources { display: flex; flex-wrap: wrap; gap: 8px; }
+  .src { flex: 1 1 180px; background: var(--sand); border-radius: var(--radius-md); padding: 10px 12px; font-size: 13px; line-height: 1.5; color: var(--slate); }
+  .src__title { font-size: 12px; font-weight: 700; color: var(--dark); margin-bottom: 4px; }
+  .src__line { display: flex; justify-content: space-between; gap: 8px; }
+  .src__line span:last-child { white-space: nowrap; }
+
+  .table { background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+  .trow { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--border); font-size: 14px; color: var(--slate); cursor: pointer; }
+  .trow:first-child { border-top: 0; }
+  .trow--head { cursor: default; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; background: var(--cream); }
+  .trow__name { flex: 1; }
+  .trow__sum { width: 120px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .trow__tag { width: 74px; text-align: right; font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; }
+  .trow:not(.trow--head):hover { background: var(--sand); }
+  .trow--on { background: var(--red-bg); }
+  .trow--on:hover { background: var(--red-bg) !important; }
+  .trow--correct, .trow--correct:hover { background: var(--green-bg) !important; }
+  .trow--wrong, .trow--wrong:hover { background: var(--red-bg) !important; }
+  .trow--missed, .trow--missed:hover { background: var(--amber-bg) !important; }
+  .trow--still { cursor: pointer; }
+  .trow--open { box-shadow: inset 0 0 0 2px var(--dark); }
+  .counter { font-size: 13px; color: var(--slate); margin-top: 8px; }
+
+  .fb-hint { font-size: 13px; color: var(--slate); margin-bottom: 6px; min-height: 20px; }
+  .fb-zone { min-height: 150px; }
+  .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
+  .verdict b { color: var(--dark); }
+  @media (max-width: 560px) { .screen { min-height: 1318px; } .fb-zone { min-height: 210px; } .trow__sum { width: 96px; } .trow__tag { width: 64px; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Сверка сборки
+   Модуль 3 · страница «Собрать таблицу».
+   Три источника и сводная таблица от нейросети: найти три строки с ошибкой.
+   Подсветка — только фоном. Разбор — в одной зоне, по нажатию на строку.
+   ========================================================= */
+
+var NEED = 3;
+
+var ROWS = [
+  { name: 'Алексеев', sum: '1 840 000', bad: false,
+    fb: 'Цифра совпадает с выгрузкой CRM-системы.' },
+  { name: 'Белова', sum: '2 110 000', bad: false,
+    fb: 'Цифра совпадает с выгрузкой CRM-системы.' },
+  { name: 'Громов', sum: '1 920', bad: true,
+    fb: 'В таблице филиала суммы в тысячах рублей, а нейросеть перенесла число как есть. Правильно — 1 920 000. Проверяйте единицы измерения в каждом источнике.' },
+  { name: 'Дёмина', sum: '1 380 000', bad: false,
+    fb: 'В филиале 1 380 тыс. руб., в сводной — 1 380 000 руб. Здесь нейросеть тысячи в рубли перевела, а у Громова — нет. Такие ошибки бывают выборочными.' },
+  { name: 'Ефимов', sum: '0', bad: false,
+    fb: 'В письме сказано: Ефимов был в отпуске, продаж нет. Ноль — верно.' },
+  { name: 'Жукова', sum: '1 700 000', bad: true,
+    fb: 'В письме есть условие: неоплаченную сделку на 300 тыс. руб. пока не считать. Правильно — 1 400 000. Условия из текста теряются чаще, чем цифры.' },
+  { name: 'Иванов', sum: '2 500 000', bad: true,
+    fb: 'Это два разных человека: Иванов А. из Москвы и Иванов П. из филиала. Нейросеть склеила их по фамилии и сложила продажи. Быстрая проверка: в источниках 8 человек, в сводной — 7.' }
+];
+
+var state = { screen: 'intro', on: [], checked: false, open: -1 };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2&nbsp;');
+  return s.replace(/ — /g, '&nbsp;— ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1&nbsp;');
+}
+
+function isOn(i) { return state.on.indexOf(i) >= 0; }
+function status(i) {
+  if (ROWS[i].bad) return isOn(i) ? 'correct' : 'missed';
+  return isOn(i) ? 'wrong' : 'still';
+}
+
+function rowClass(i) {
+  if (!state.checked) return 'trow' + (isOn(i) ? ' trow--on' : '');
+  return 'trow trow--' + status(i) + (i === state.open ? ' trow--open' : '');
+}
+
+function rowHtml(i) {
+  var r = ROWS[i];
+  return '<div id="row-' + i + '" class="' + rowClass(i) + '" onclick="tap(' + i + ')">'
+    + '<span class="trow__name">' + r.name + '</span>'
+    + '<span class="trow__sum">' + r.sum + '</span>'
+    + '<span class="trow__tag">' + (state.checked ? 'Почему? ›' : '') + '</span></div>';
+}
+
+function sourcesHtml() {
+  return '<div class="sources">'
+    + '<div class="src"><div class="src__title">Выгрузка CRM, Москва, руб.</div>'
+    + '<div class="src__line"><span>Алексеев</span><span>1 840 000</span></div>'
+    + '<div class="src__line"><span>Белова</span><span>2 110 000</span></div>'
+    + '<div class="src__line"><span>Иванов А.</span><span>1 560 000</span></div></div>'
+    + '<div class="src"><div class="src__title">Таблица филиала (PDF), тыс. руб.</div>'
+    + '<div class="src__line"><span>Громов</span><span>1 920</span></div>'
+    + '<div class="src__line"><span>Дёмина</span><span>1 380</span></div>'
+    + '<div class="src__line"><span>Иванов П.</span><span>940</span></div></div>'
+    + '<div class="src"><div class="src__title">Письмо руководителя группы</div>'
+    + '«Ефимов в октябре был в отпуске, продаж нет. У Жуковой 1,7 млн, но сделку на 300 тыс. клиент ещё не оплатил — её пока не считай».</div>'
+    + '</div>';
+}
+
+function tableHtml() {
+  var rows = '<div class="trow trow--head"><span class="trow__name">Менеджер</span><span class="trow__sum">Октябрь, руб.</span><span class="trow__tag"></span></div>';
+  for (var i = 0; i < ROWS.length; i++) rows += rowHtml(i);
+  return '<div class="table">' + rows + '</div>';
+}
+
+function counterText() {
+  if (state.checked) return '';
+  return 'Отмечено: ' + state.on.length + ' из ' + NEED;
+}
+
+function verdictHtml() {
+  var found = 0, wrong = 0;
+  for (var i = 0; i < ROWS.length; i++) { var s = status(i); if (s === 'correct') found++; if (s === 'wrong') wrong++; }
+  if (found === NEED) return 'Вы нашли <b>все три ошибки</b>: единицы измерения, потерянное условие и склеенных людей.';
+  return 'Найдено ' + found + ' из ' + NEED + '. Жёлтым отмечены пропущенные ошибки — посмотрите, что в них не так.';
+}
+
+function zoneHtml() {
+  if (!state.checked) return '<div class="hint">После проверки здесь появится разбор.</div>';
+  var i = state.open, s = status(i), r = ROWS[i];
+  var cls = { correct: 'feedback--success', wrong: 'feedback--error', missed: 'feedback--warning', still: 'feedback--info' }[s];
+  var head = { correct: 'Верно', wrong: 'Неверно', missed: 'Пропущено', still: 'Здесь всё верно' }[s];
+  return '<p class="verdict">' + verdictHtml() + '</p>'
+    + '<div class="feedback ' + cls + '"><div class="feedback__head">' + head + ' · ' + r.name + '</div>' + r.fb + '</div>';
+}
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">Сверка <span>сборки</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Руководитель отдела продаж собирает продажи за октябрь из трёх источников: выгрузки CRM-системы, таблицы филиала в PDF и письма руководителя группы. Он попросил нейросеть свести всё в одну таблицу в рублях. Найдите три строки, которые нельзя отправлять дальше.</p>'
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function renderTask() {
+  var bottom;
+  if (!state.checked) {
+    bottom = '<button id="check-btn" class="btn btn--primary btn--full mt-md" onclick="check()"' + (state.on.length === NEED ? '' : ' disabled') + '>Проверить →</button>';
+  } else {
+    bottom = '<div class="legend-box"><span class="legend-tag">Итог</span>'
+      + 'После сборки проверьте три вещи: <strong>сколько строк</strong> было в источниках и сколько стало, <strong>единицы измерения</strong> в каждом источнике и <strong>условия</strong>, которые были написаны словами.</div>'
+      + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+  }
+  return '<div class="screen__body">'
+    + '<div class="label">Источники</div>' + sourcesHtml()
+    + '<div class="label">Сводная таблица от нейросети</div>' + tableHtml()
+    + '<div class="counter" id="counter">' + counterText() + '</div>'
+    + '<div class="fb-hint mt-sm">' + (state.checked ? 'Нажмите на строку, чтобы увидеть разбор.' : 'Нажмите на три строки с ошибками.') + '</div>'
+    + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
+    + '</div>' + bottom;
+}
+
+function render() {
+  var body = state.screen === 'intro' ? renderIntro() : renderTask();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+function tap(i) {
+  if (!state.checked) {
+    var k = state.on.indexOf(i);
+    if (k >= 0) state.on.splice(k, 1);
+    else if (state.on.length < NEED) state.on.push(i);
+    else return;
+    document.getElementById('row-' + i).className = rowClass(i);
+    document.getElementById('counter').innerHTML = counterText();
+    document.getElementById('check-btn').disabled = state.on.length !== NEED;
+    notifyHeight();
+    return;
+  }
+  if (i === state.open) return;
+  var prev = state.open;
+  state.open = i;
+  document.getElementById('row-' + prev).className = rowClass(prev);
+  document.getElementById('row-' + i).className = rowClass(i);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
+  notifyHeight();
+}
+
+function firstOpen() {
+  for (var i = 0; i < ROWS.length; i++) if (status(i) === 'missed') return i;
+  for (i = 0; i < ROWS.length; i++) if (status(i) === 'wrong') return i;
+  for (i = 0; i < ROWS.length; i++) if (status(i) === 'correct') return i;
+  return 0;
+}
+
+function start() { state.screen = 'task'; state.on = []; state.checked = false; state.open = -1; render(); }
+function check() { state.checked = true; state.open = firstOpen(); render(); }
+function restart() { state.screen = 'intro'; state.on = []; state.checked = false; state.open = -1; render(); }
+
+render();
+</script>
+</body>
+</html>
