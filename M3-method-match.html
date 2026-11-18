@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Метод под вопрос</title>
+<title>Приём под вопрос</title>
 <link rel="stylesheet" href="styles.css">
 <style>
   /* min-height = максимум по всем состояниям: 700px и 360/500px */
-  .screen { min-height: 1146px; display: flex; flex-direction: column; }
+  .screen { min-height: 1097px; display: flex; flex-direction: column; }
   .screen__body { display: flex; flex-direction: column; }
 
   .row { margin-top: 10px; padding: 10px 12px; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); }
@@ -15,6 +15,9 @@
   .row__name { font-size: 14px; font-weight: 600; color: var(--dark); }
   .row__label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); }
   .row__q { font-size: 14px; line-height: 1.5; color: var(--dark); margin-top: 2px; }
+  .gloss { margin: 12px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.6; color: var(--slate); }
+  .gloss li { margin-bottom: 4px; }
+  .gloss b { color: var(--dark); }
   .row__sample { font-size: 12px; color: var(--slate); opacity: .8; margin-top: 2px; }
   .why-tag { font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; }
   .row--click { cursor: pointer; }
@@ -30,7 +33,7 @@
   .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
   .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
   .verdict b { color: var(--dark); }
-  @media (max-width: 560px) { .screen { min-height: 1589px; } .fb-zone { min-height: 190px; } }
+  @media (max-width: 560px) { .screen { min-height: 1491px; } .fb-zone { min-height: 190px; } }
 </style>
 </head>
 <body>
@@ -38,22 +41,22 @@
 <script src="common.js"></script>
 <script>
 /* =========================================================
-   Метод под вопрос
+   Приём под вопрос
    Модуль 3 · страница «Найти закономерности».
-   Классификация: вопрос руководителя → метод анализа.
+   Классификация: вопрос руководителя → приём анализа.
    Последний вопрос с подвохом: данных слишком мало, считать не нужно.
    ========================================================= */
 
-var ACTS = ['Аномалии', 'Взаимосвязь', 'ABC-анализ', 'Разложение', 'Не считать'];
+var ACTS = ['Аномалии', 'Взаимосвязь', 'ABC-анализ', 'Факторный анализ', 'Не считать'];
 
 var ROWS = [
   { name: 'Вопрос 1', sample: 'Клиентов у нас 140. На каких тратить время в первую очередь?', right: 2,
     ok: 'ABC-анализ делит клиентов на группы по вкладу в выручку. Обычно небольшая группа даёт большую часть продаж, с неё и начинают.',
     other: 'Здесь нужно разделить клиентов по вкладу в выручку. Это ABC-анализ.', spec: {} },
   { name: 'Вопрос 2', sample: 'Выручка упала на 15%. Клиентов стало меньше или они стали покупать меньше?', right: 3,
-    ok: 'Выручка = число клиентов × средний чек. Разложение показывает, какой множитель дал падение. Без него нейросеть легко придумает причину сама.',
-    other: 'Вопрос «из-за чего изменился показатель» решают разложением на факторы: выручка = клиенты × средний чек.',
-    spec: { 1: 'Взаимосвязь ищут между двумя показателями на многих наблюдениях. Здесь нужно понять, из каких частей сложилось падение, — это разложение на факторы.' } },
+    ok: 'Выручка = число клиентов × средний чек. Факторный анализ показывает, какая составляющая дала падение. Без него нейросеть легко придумает причину сама.',
+    other: 'Вопрос «из-за чего изменился показатель» решают факторным анализом: выручка = клиенты × средний чек.',
+    spec: { 1: 'Взаимосвязь ищут между двумя показателями на многих наблюдениях. Здесь нужно понять, из каких частей сложилось падение, — это факторный анализ.' } },
   { name: 'Вопрос 3', sample: 'У одного сотрудника расходы на командировки втрое выше, чем у остальных. Это нормально?', right: 0,
     ok: 'Это поиск аномалии. Нейросеть найдёт выброс, но причину знаете вы: может, у сотрудника дальние регионы, а может, ошибка в данных.',
     other: 'Одно значение резко отличается от остальных — это аномалия. Её проверяют: ошибка в данных или реальное событие.', spec: {} },
@@ -108,7 +111,7 @@ function rowHtml(i) {
 function verdictHtml() {
   var bad = [];
   for (var j = 0; j < ROWS.length; j++) if (grade(j) === 'bad') bad.push(j + 1);
-  if (bad.length === 0) return 'Вы <b>подбираете метод под вопрос</b> и видите, когда считать бессмысленно.';
+  if (bad.length === 0) return 'Вы <b>подбираете приём под вопрос</b> и видите, когда считать бессмысленно.';
   return 'Перечитайте ' + (bad.length === 1 ? 'вопрос ' : 'вопросы ') + '<b>' + bad.join(', ') + '</b>: что именно ' + (bad.length === 1 ? 'в нём' : 'в них') + ' спрашивают?';
 }
 
@@ -125,9 +128,16 @@ function zoneHtml() {
 
 function renderIntro() {
   return '<div class="screen__body">'
-    + '<h1 class="page-title">Метод <span>под вопрос</span></h1>'
+    + '<h1 class="page-title">Приём <span>под вопрос</span></h1>'
     + '<div class="divider"></div>'
-    + '<p class="lead-text">Нейросеть посчитает почти что угодно. Но решать, какой метод подходит под вопрос и стоит ли вообще считать, — вам. Перед вами пять вопросов руководителя. Выберите для каждого метод.</p>'
+    + '<p class="lead-text">Нейросеть посчитает почти что угодно. Но решать, какой приём подходит под вопрос и стоит ли вообще считать, — вам. Перед вами пять вопросов руководителя. Выберите для каждого приём.</p>'
+    + '<ul class="gloss">'
+    + '<li><b>Аномалии</b> — найти значения, которые резко отличаются от остальных.</li>'
+    + '<li><b>Взаимосвязь</b> — проверить, меняются ли два показателя вместе.</li>'
+    + '<li><b>ABC-анализ</b> — разделить клиентов или товары на группы по вкладу в результат.</li>'
+    + '<li><b>Факторный анализ</b> — понять, какая составляющая дала изменение показателя. Например, выручка = клиенты × средний чек.</li>'
+    + '<li><b>Не считать</b> — данных так мало, что любой расчёт даст случайный вывод.</li>'
+    + '</ul>'
     + '</div>'
     + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
 }
@@ -140,11 +150,11 @@ function renderTask() {
     bottom = '<button id="check-btn" class="btn btn--primary btn--full mt-md" onclick="check()"' + (allPicked() ? '' : ' disabled') + '>Проверить →</button>';
   } else {
     bottom = '<div class="legend-box"><span class="legend-tag">Итог</span>'
-      + 'Нейросеть — <strong>консультант по методу</strong>: попросите её предложить метод под вопрос, посчитать кодом и сказать, <strong>где выводу нельзя верить</strong>. Если данных мало, честный ответ — не считать.</div>'
+      + 'Нейросеть помогает <strong>выбрать приём</strong>: попросите её предложить приём под вопрос, посчитать кодом и сказать, <strong>где выводу нельзя верить</strong>. Если данных мало, честный ответ — не считать.</div>'
       + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
   }
   return '<div class="screen__body">'
-    + '<p class="lead-text">Какой метод подходит под каждый вопрос? «Разложение» — разложение показателя на множители, например выручка = клиенты × средний чек. «Не считать» — данных слишком мало для расчёта.</p>'
+    + '<p class="lead-text">Какой приём подходит под каждый вопрос?</p>'
     + rows
     + '<div class="fb-hint mt-md">' + (state.checked ? 'Нажмите на вопрос, чтобы увидеть разбор.' : '') + '</div>'
     + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
