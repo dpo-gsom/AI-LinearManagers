@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Соберите сценарий</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 902px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin: 12px 0 6px; }
+  .pool, .list { display: flex; flex-direction: column; gap: 6px; }
+  .list { min-height: 44px; }
+  .empty { font-size: 13px; color: var(--slate); text-align: center; padding: 12px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .step { position: relative; display: flex; gap: 10px; align-items: baseline; padding: 9px 12px 9px 16px; border-radius: var(--radius-md); font-size: 14px; line-height: 1.45; color: var(--dark); }
+  .step::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 4px; border-radius: 2px; background: var(--c); }
+  .step__n { flex: 0 0 auto; font-weight: 700; color: var(--red); min-width: 14px; }
+  .step__kind { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--c); }
+  .step__text { flex: 1; }
+  .step__tag { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; }
+  .step--locked { cursor: pointer; }
+  .step--open { box-shadow: 0 0 0 2px var(--dark) !important; }
+
+  .fb-hint { font-size: 13px; color: var(--slate); margin-bottom: 6px; min-height: 20px; }
+  .fb-zone { min-height: 140px; }
+  .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
+  .verdict b { color: var(--dark); }
+  @media (max-width: 560px) { .screen { min-height: 1120px; } .fb-zone { min-height: 180px; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Соберите сценарий
+   Модуль 4 · страница «Автоматизация. Сценарий по шагам».
+   Шесть шагов сценария вперемешку: нажимать в порядке выполнения.
+   Каждый шаг берёт данные у предыдущего, поэтому порядок однозначный.
+   ========================================================= */
+
+var KINDS = {
+  run:   { name: 'Запуск', c: '#8A6200' },
+  tool:  { name: 'Инструменты', c: '#1A6B4A' },
+  model: { name: 'Модель', c: '#003B48' },
+  human: { name: 'Человек', c: '#495761' }
+};
+
+/* В порядке выполнения */
+var STEPS = [
+  { kind: 'run', text: 'Каждый понедельник в 9:00',
+    fb: 'Сценарий начинается с запуска: он задаёт, когда работать. Здесь это расписание.' },
+  { kind: 'tool', text: 'Выгрузить из системы задач все задачи отдела со сроком на прошлой неделе',
+    fb: 'Сначала нужно взять данные. Все следующие шаги работают с этой выгрузкой.' },
+  { kind: 'tool', text: 'Оставить в выгрузке только незакрытые задачи',
+    fb: 'Отбирать можно только то, что уже выгружено. Поэтому отбор идёт сразу после выгрузки.' },
+  { kind: 'model', text: 'Нейросеть пишет по каждой задаче одну строку: что сорвалось и у кого',
+    fb: 'Нейросеть пишет строки по уже отобранным задачам. Если поставить её раньше отбора, она напишет и про закрытые задачи.' },
+  { kind: 'human', text: 'Руководитель проверяет список',
+    fb: 'Список увидит весь отдел, и в нём фамилии. Ошибку нейросети нужно заметить до отправки, поэтому проверка стоит перед шагом «Отправить».' },
+  { kind: 'tool', text: 'Отправить список в общий чат отдела',
+    fb: 'Отправка — последний шаг: после неё результат увидят другие, и вернуть его уже нельзя.' }
+];
+var SHUFFLE = [3, 5, 0, 2, 4, 1];
+
+var state = { screen: 'intro', placed: [], checked: false, open: -1 };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2&nbsp;');
+  return s.replace(/ — /g, '&nbsp;— ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1&nbsp;');
+}
+
+function okAt(pos) { return state.placed[pos] === pos; }
+
+function stepHtml(s, extra, onclick, num, tag, id) {
+  var st = STEPS[s], k = KINDS[st.kind];
+  return '<div' + (id ? ' id="' + id + '"' : '') + ' class="card step ' + extra + '" style="--c:' + k.c + '" onclick="' + onclick + '">'
+    + (num ? '<span class="step__n">' + num + '</span>' : '')
+    + '<span class="step__text"><span class="step__kind">' + k.name + '</span>' + st.text + '</span>'
+    + (tag ? '<span class="step__tag">' + tag + '</span>' : '') + '</div>';
+}
+
+function listHtml() {
+  if (!state.placed.length) return '<div class="empty">Нажимайте на шаги ниже в порядке выполнения.</div>';
+  var s = '';
+  for (var p = 0; p < state.placed.length; p++) {
+    var cls;
+    if (!state.checked) cls = 'card--interactive card--selected';
+    else cls = 'step--locked ' + (okAt(p) ? 'card--correct' : 'card--wrong') + (p === state.open ? ' step--open' : '');
+    s += stepHtml(state.placed[p], cls, state.checked ? 'openStep(' + p + ')' : 'unplace(' + p + ')', p + 1, state.checked ? 'Почему? ›' : '', 'pl-' + p);
+  }
+  return s;
+}
+
+function poolHtml() {
+  var s = '';
+  for (var i = 0; i < SHUFFLE.length; i++) {
+    var idx = SHUFFLE[i];
+    if (state.placed.indexOf(idx) >= 0) continue;
+    s += stepHtml(idx, 'card--interactive', 'place(' + idx + ')', '', '', '');
+  }
+  return s;
+}
+
+function verdictHtml() {
+  var ok = 0;
+  for (var p = 0; p < STEPS.length; p++) if (okAt(p)) ok++;
+  if (ok === STEPS.length) return '<b>Сценарий собран верно</b>: каждый шаг получает данные от предыдущего, проверка стоит перед отправкой.';
+  return 'На своих местах ' + ok + ' шагов из ' + STEPS.length + '. Красным отмечены шаги не на своём месте.';
+}
+
+function zoneHtml() {
+  if (!state.checked) return '<div class="hint">После проверки здесь появится разбор.</div>';
+  var p = state.open, s = state.placed[p], ok = okAt(p);
+  var head = ok ? 'Верно · шаг ' + (p + 1) : 'Неверно · этот шаг — ' + (s + 1) + '-й';
+  return '<p class="verdict">' + verdictHtml() + '</p>'
+    + '<div class="feedback ' + (ok ? 'feedback--success' : 'feedback--error') + '"><div class="feedback__head">' + head + '</div>' + STEPS[s].fb + '</div>';
+}
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">Соберите <span>сценарий</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Руководитель хочет каждую неделю получать в общий чат отдела список просроченных задач. Шаги сценария перепутаны. Нажимайте на них в том порядке, в котором их нужно выполнять. Чтобы вернуть шаг, нажмите на него в сценарии.</p>'
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function renderTask() {
+  var bottom = !state.checked
+    ? '<button class="btn btn--primary btn--full mt-md" onclick="check()"' + (state.placed.length === STEPS.length ? '' : ' disabled') + '>Проверить →</button>'
+    : '<div class="legend-box"><span class="legend-tag">Итог</span>'
+      + 'Проверяйте порядок вопросом <strong>«откуда этот шаг берёт данные?»</strong>. Проверку человеком ставьте <strong>перед шагом, после которого результат увидят другие</strong>.</div>'
+      + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+  return '<div class="screen__body">'
+    + '<div class="label">Сценарий</div><div class="list">' + listHtml() + '</div>'
+    + (state.checked ? '' : '<div class="label">Шаги</div><div class="pool">' + poolHtml() + '</div>')
+    + '<div class="fb-hint mt-md">' + (state.checked ? 'Нажмите на шаг, чтобы увидеть разбор.' : '') + '</div>'
+    + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
+    + '</div>' + bottom;
+}
+
+function render(anim) {
+  var body = state.screen === 'intro' ? renderIntro() : renderTask();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen' + (anim ? ' anim-fade-up' : '') + '">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+function place(i) { if (state.checked) return; state.placed.push(i); render(false); }
+function unplace(p) { if (state.checked) return; state.placed.splice(p, 1); render(false); }
+
+function openStep(p) {
+  if (p === state.open) return;
+  var prev = state.open;
+  state.open = p;
+  var cls = function (q) { return 'card step step--locked ' + (okAt(q) ? 'card--correct' : 'card--wrong') + (q === state.open ? ' step--open' : ''); };
+  document.getElementById('pl-' + prev).className = cls(prev);
+  document.getElementById('pl-' + p).className = cls(p);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
+  notifyHeight();
+}
+
+function firstOpen() {
+  for (var p = 0; p < STEPS.length; p++) if (!okAt(p)) return p;
+  return STEPS.length - 2;
+}
+
+function start() { state.screen = 'task'; state.placed = []; state.checked = false; state.open = -1; render(true); }
+function check() { state.checked = true; state.open = firstOpen(); render(true); }
+function restart() { state.screen = 'intro'; render(true); }
+
+render(true);
+</script>
+</body>
+</html>

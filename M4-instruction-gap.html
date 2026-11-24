@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Где дыра в инструкции</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 873px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin: 12px 0 6px; }
+  .instr { background: var(--sand); border-radius: var(--radius-md); padding: 10px 14px; font-size: 13px; line-height: 1.55; color: var(--slate); }
+  .instr b { color: var(--dark); }
+  .msg { max-width: 92%; padding: 9px 13px; font-size: 14px; line-height: 1.5; margin-top: 6px; }
+  .msg__who { font-size: 11px; font-weight: 700; letter-spacing: .5px; color: var(--slate); margin-bottom: 2px; }
+  .msg--user { align-self: flex-end; background: var(--white); border: 1.5px solid var(--border); border-radius: 14px 14px 4px 14px; color: var(--dark); }
+  .msg--bot { align-self: flex-start; background: #EEF1F6; border-radius: 14px 14px 14px 4px; color: var(--dark); }
+  .fact { margin-top: 8px; font-size: 13px; line-height: 1.55; color: var(--slate); }
+  .fact b { color: var(--dark); }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .opt { padding: 10px 12px; font-size: 14px; line-height: 1.4; color: var(--dark); }
+  .opt--locked { cursor: default; pointer-events: none; }
+
+  .fb-zone { min-height: 150px; margin-top: 12px; }
+  .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .sum { margin-top: 8px; padding: 10px 14px; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); font-size: 14px; line-height: 1.5; color: var(--slate); }
+  .sum b { color: var(--dark); }
+  @media (max-width: 560px) {
+    .screen { min-height: 1125px; }
+    .opts { grid-template-columns: 1fr; gap: 6px; }
+    .opt { padding: 8px 12px; }
+    .msg { max-width: 100%; }
+    .fb-zone { min-height: 190px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Где дыра в инструкции
+   Модуль 4 · страница «Ассистент. Постоянная инструкция и знания».
+   Четыре диалога с ассистентом отдела кадров: найти причину ошибки.
+   Зелёный — верно, жёлтый — допустимо, но не главная причина, красный — неверно.
+   ========================================================= */
+
+var OPTS = ['В инструкции нет нужного правила', 'Нужного файла нет в базе знаний', 'Файл в базе знаний устарел', 'Ассистент увидел только часть документа'];
+var SHORT = ['нет правила', 'нет файла', 'файл устарел', 'видел только часть документа'];
+
+var CASES = [
+  { q: 'Компания оплачивает детям путёвки в летний лагерь?',
+    a: 'Да, компания компенсирует 50% стоимости путёвки. Подайте заявление в отдел кадров до 1 мая.',
+    fact: 'О путёвках нет ни слова ни в одном файле базы знаний.',
+    right: 0, warn: 1,
+    fb: [
+      'Ассистент не нашёл ответа в файлах и сочинил правдоподобный. В инструкции нет правила «Если в файлах нет ответа — так и скажи и подскажи, к кому обратиться». С ним ассистент ответил бы честно.',
+      'Если такая компенсация есть, файл о ней стоит добавить. Но главная дыра в другом: без правила «нет ответа — скажи» ассистент будет сочинять на любой вопрос, которого нет в файлах.',
+      'Устаревать нечему: о путёвках в базе знаний ничего нет. Ассистент сочинил ответ, потому что в инструкции нет правила на такой случай.',
+      'Части документа о путёвках тоже нет: о них не написано нигде. Ассистент сочинил ответ, потому что в инструкции нет правила «нет ответа — скажи».'
+    ] },
+  { q: 'За сколько дней подавать заявление на отпуск?',
+    a: 'За 14 календарных дней (п. 2.3 Положения об отпусках).',
+    fact: 'С 1 октября 2026 года действует новая редакция положения: заявление подают за 30 дней. В базе знаний лежит редакция 2025 года.',
+    right: 2, warn: -1,
+    fb: [
+      'Правило «указывай пункт» сработало: ассистент честно сослался на документ. Беда в самом документе — он устарел.',
+      'Файл в базе знаний есть, только в старой редакции. Замените его новой.',
+      'Ассистент ответил точно по документу, но документ устарел. Когда положение обновили, файл нужно заменить и в базе знаний.',
+      'Ассистент нашёл нужный пункт целиком. Ошибка в том, что пункт взят из старой редакции положения.'
+    ] },
+  { q: 'Перечисли все случаи, когда отпуск можно перенести без согласования с руководителем.',
+    a: 'Таких случаев два: болезнь во время отпуска (п. 4.2) и исполнение государственных обязанностей (п. 4.3).',
+    fact: 'В положении таких случаев четыре. Ещё два описаны в разделе 6, в другой части документа.',
+    right: 3, warn: 0,
+    fb: [
+      'Правило «Если вопрос касается всего документа, предупреди, что ответ может быть неполным» поможет. Но причина ошибки в другом: ассистент видел только найденные фрагменты, и раздел 6 в них не попал.',
+      'Файл в базе знаний есть, и оба недостающих случая в нём описаны. Ассистент их не увидел: в ответ попали только найденные фрагменты.',
+      'Положение актуальное, все четыре случая в нём есть. Ассистент видел только найденные фрагменты, и раздел 6 в них не попал.',
+      'На вопрос по всему документу ассистент отвечает по найденным фрагментам. Раздел 6 в них не попал, и ответ получился неполным. Такие вопросы надёжнее задавать в обычном чате, загрузив документ целиком.'
+    ] },
+  { q: 'Как оформить больничный?',
+    a: 'Получите у врача электронный листок нетрудоспособности и сообщите его номер работодателю. Пособие начислят автоматически.',
+    fact: 'Больничные в инструкции упомянуты, но положения о больничных в базе знаний нет. В компании свой порядок: в день болезни нужно предупредить руководителя.',
+    right: 1, warn: 0,
+    fb: [
+      'Правило «нет ответа в файлах — скажи» помешало бы ассистенту выдать общий ответ за правила компании. Но сотрудник всё равно остался бы без ответа: нужен сам документ.',
+      'Больничные в инструкции упомянуты, а документа о них нет. Ассистент ответил по общим знаниям и пропустил правила компании. Добавьте положение о больничных в базу знаний.',
+      'Устаревшего файла здесь нет: документа о больничных в базе знаний нет вообще.',
+      'Части документа ассистент не видел, потому что документа нет совсем. Добавьте положение о больничных в базу знаний.'
+    ] }
+];
+
+var state = { screen: 'intro', c: 0, pick: -1, picks: [] };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2&nbsp;');
+  return s.replace(/ — /g, '&nbsp;— ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1&nbsp;').replace(/п\. (\d)/g, 'п.&nbsp;$1');
+}
+
+function grade(c, p) { return p === CASES[c].right ? 'ok' : (p === CASES[c].warn ? 'warn' : 'bad'); }
+
+function instrHtml() {
+  return '<div class="instr"><b>Роль:</b> помощник отдела кадров. '
+    + '<b>Навыки:</b> отвечать на вопросы об отпусках, командировках и больничных, давать шаблоны заявлений. '
+    + '<b>База знаний:</b> Положение об отпусках (редакция 2025 года), Положение о командировках, шаблоны заявлений. '
+    + '<b>Правила работы:</b> отвечай кратко, указывай пункт положения.</div>';
+}
+
+function optClass(o) {
+  var p = state.pick, c = CASES[state.c];
+  if (p < 0) return 'card card--interactive opt';
+  if (o === c.right) return 'card opt opt--locked card--correct';
+  if (o === p) return 'card opt opt--locked ' + (o === c.warn ? 'card--warning' : 'card--wrong');
+  return 'card opt opt--locked card--dimmed';
+}
+
+function zoneHtml() {
+  if (state.pick < 0) return '<div class="hint">Здесь появится разбор.</div>';
+  var c = CASES[state.c], g = grade(state.c, state.pick);
+  var cls = { ok: 'feedback--success', warn: 'feedback--warning', bad: 'feedback--error' }[g];
+  var head = { ok: 'Верно · ' + SHORT[c.right], warn: 'Допустимо, но… · главное — ' + SHORT[c.right], bad: 'Неверно · здесь ' + SHORT[c.right] }[g];
+  return '<div class="feedback ' + cls + '"><div class="feedback__head">' + head + '</div>' + c.fb[state.pick] + '</div>';
+}
+
+function progressHtml() {
+  var n = state.c + 1;
+  return '<div class="progress"><div class="progress__meta"><span class="progress__label">Диалог</span>'
+    + '<span class="progress__fraction"><em>' + n + '</em> / ' + CASES.length + '</span></div>'
+    + '<div class="progress__track"><div class="progress__fill" style="width:' + (n / CASES.length * 100) + '%"></div></div></div>';
+}
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">Где дыра <span>в инструкции</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Руководитель отдела кадров настроил ассистента для сотрудников. В четырёх диалогах ассистент ответил неправильно. Для каждого найдите причину: не хватило правила в инструкции, нужного файла, свежей версии файла, или ассистент увидел только часть документа.</p>'
+    + '<div class="label">Инструкция ассистента</div>' + instrHtml()
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function renderCase() {
+  var c = CASES[state.c], opts = '';
+  for (var o = 0; o < OPTS.length; o++) opts += '<div id="opt-' + o + '" class="' + optClass(o) + '" onclick="choose(' + o + ')">' + OPTS[o] + '</div>';
+  return '<div class="screen__body">' + progressHtml()
+    + '<div class="label">Инструкция ассистента</div>' + instrHtml()
+    + '<div class="label">Диалог</div>'
+    + '<div style="display:flex;flex-direction:column;">'
+    + '<div class="msg msg--user"><div class="msg__who">Сотрудник</div>' + c.q + '</div>'
+    + '<div class="msg msg--bot"><div class="msg__who">Ассистент</div>' + c.a + '</div></div>'
+    + '<p class="fact"><b>Что известно:</b> ' + c.fact + '</p>'
+    + '<div class="label">Почему ассистент ошибся?</div>'
+    + '<div class="opts">' + opts + '</div>'
+    + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
+    + '</div>'
+    + '<button id="next-btn" class="btn btn--primary btn--full mt-md" onclick="next()"' + (state.pick < 0 ? ' disabled' : '') + '>'
+    + (state.c < CASES.length - 1 ? 'Следующий диалог →' : 'К итогам →') + '</button>';
+}
+
+function renderFinal() {
+  var rows = '', ok = 0;
+  for (var i = 0; i < CASES.length; i++) {
+    var g = grade(i, state.picks[i]);
+    if (g === 'ok') ok++;
+    rows += '<div class="sum"><b>«' + CASES[i].q + '»</b><br>Причина: ' + SHORT[CASES[i].right]
+      + (g === 'ok' ? '' : '. Вы выбрали: ' + SHORT[state.picks[i]]) + '</div>';
+  }
+  var head = ok === CASES.length ? 'Вы уверенно находите причину ошибки' : 'Вы разбираете ошибки ассистента';
+  return '<div class="screen__body">'
+    + '<div class="result-hero"><div class="result-hero__title">' + head + '</div>'
+    + '<div class="result-hero__text">У одной и той же ошибки ассистента бывают разные причины, и чинят их по-разному.</div></div>'
+    + rows
+    + '<div class="legend-box"><span class="legend-tag">Итог</span>'
+    + 'Когда ассистент ошибся, спросите по порядку: <strong>есть ли ответ в файлах</strong>, <strong>актуален ли файл</strong>, <strong>не задан ли вопрос по всему документу</strong>. Если ответа в файлах нет, ассистент должен сказать об этом прямо — это правило инструкции.</div>'
+    + '</div>'
+    + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+}
+
+function render() {
+  var body = state.screen === 'intro' ? renderIntro() : (state.screen === 'final' ? renderFinal() : renderCase());
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+function choose(o) {
+  if (state.pick >= 0) return;
+  state.pick = o;
+  state.picks[state.c] = o;
+  for (var k = 0; k < OPTS.length; k++) document.getElementById('opt-' + k).className = optClass(k);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
+  document.getElementById('next-btn').disabled = false;
+  notifyHeight();
+}
+
+function start() { state.screen = 'case'; state.c = 0; state.pick = -1; state.picks = []; render(); }
+function next() {
+  if (state.c < CASES.length - 1) { state.c++; state.pick = -1; }
+  else state.screen = 'final';
+  render();
+}
+function restart() { state.screen = 'intro'; render(); }
+
+render();
+</script>
+</body>
+</html>

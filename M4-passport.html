@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Паспорт помощника</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 711px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin: 14px 0 6px; }
+  .field { margin-top: 10px; }
+  .field__name { font-size: 13px; font-weight: 700; color: var(--dark); margin-bottom: 4px; }
+  textarea, select { width: 100%; font-family: var(--font-body); font-size: 14px; line-height: 1.5; color: var(--dark); background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; resize: vertical; }
+  textarea:focus, select:focus { outline: none; border-color: var(--dark); }
+  textarea::placeholder { color: #9AA3AB; }
+
+  .q { margin-top: 8px; padding: 10px 12px; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); }
+  .q__text { font-size: 14px; font-weight: 600; color: var(--dark); line-height: 1.45; }
+  .q__n { color: var(--red); margin-right: 4px; }
+  .yn { display: flex; gap: 6px; margin-top: 8px; }
+  .yn .chip { padding: 5px 16px; font-size: 13px; border-radius: 18px; color: var(--dark); }
+  .yn .chip.card--selected { border-color: var(--dark); background: var(--sand); font-weight: 600; }
+
+  .type { margin-top: 12px; }
+  .out { white-space: pre-wrap; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; font-size: 14px; line-height: 1.6; color: var(--dark); }
+  .copied { font-size: 13px; color: var(--green); min-height: 20px; margin-top: 6px; text-align: center; }
+  .tip { font-size: 13px; line-height: 1.55; color: var(--slate); margin-top: 10px; }
+  .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+  .btn-row .btn { flex: 1; }
+  @media (max-width: 560px) { .screen { min-height: 904px; } .btn-row { flex-direction: column; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Паспорт помощника
+   Модуль 4 · страница «Какой помощник нужен под задачу».
+   Конструктор: своя задача → четыре вопроса → вид помощника →
+   поля паспорта → готовый текст, который можно скопировать в любой сервис.
+   ========================================================= */
+
+var QS = [
+  { text: 'Задача регулярно повторяется?', yes: 1, no: 'chat' },
+  { text: 'Шаги каждый раз одинаковые, и их можно расписать заранее?', yes: 'auto', no: 2 },
+  { text: 'Следующий шаг вы готовы решать сами, по ходу разговора?', yes: 'assist', no: 3 },
+  { text: 'Шагов много, и они зависят от того, что найдётся по ходу?', yes: 'agent', no: 'auto2' }
+];
+
+var TYPES = {
+  chat:   { name: 'Обычный чат', why: 'Задача разовая: настраивать помощника дольше, чем сделать её в чате. Паспорт превратится в хороший промпт.' },
+  auto:   { name: 'Автоматизация', why: 'Шаги известны заранее и повторяются. Опишите сценарий словами, по этому описанию его соберут в конструкторе.' },
+  auto2:  { name: 'Автоматизация', why: 'Если шагов немного и они не зависят от найденного, скорее всего, их всё-таки можно расписать заранее. Попробуйте описать сценарий.' },
+  assist: { name: 'Ассистент', why: 'Правила и файлы постоянные, а что делать дальше, решаете вы. Опишите инструкцию по четырём частям.' },
+  agent:  { name: 'Агент', why: 'Путь зависит от того, что найдётся по ходу. Запишите цель, инструменты и стоп-правила и начните с уровня «готовит черновик».' }
+};
+
+var FIELDS = {
+  chat: [
+    { id: 'task', name: 'Задача', ph: 'Напиши письмо клиенту с извинениями за срыв срока поставки' },
+    { id: 'ctx', name: 'Контекст', ph: 'Клиент — сеть магазинов, работаем три года. Поставка задержалась на неделю из-за перевозчика, новый срок — 12 декабря' },
+    { id: 'fmt', name: 'Формат ответа', ph: 'Письмо на 5–7 предложений, деловой и спокойный тон, без канцелярита' }
+  ],
+  assist: [
+    { id: 'role', name: 'Роль', ph: 'Помощник руководителя отдела продаж' },
+    { id: 'skills', name: 'Для каких задач и как их выполнять', ph: 'Отвечать менеджерам на вопросы о скидках: найти правило в регламенте, объяснить его, указать пункт' },
+    { id: 'files', name: 'Какие файлы положить в базу знаний', ph: 'Регламент скидок, прайс-лист, шаблоны договоров' },
+    { id: 'rules', name: 'Правила работы', val: 'Отвечай кратко, со ссылкой на файл и пункт. Если в файлах нет ответа, так и скажи и подскажи, к кому обратиться.' },
+    { id: 'no', name: 'Чего нельзя делать', val: 'Не обещай сроки и скидки, не называй суммы, которых нет в файлах.' }
+  ],
+  auto: [
+    { id: 'when', name: 'Когда запускать', ph: 'Каждый понедельник в 9:00' },
+    { id: 'src', name: 'Откуда брать данные', ph: 'Из системы задач — задачи отдела со сроком на прошлой неделе' },
+    { id: 'steps', name: 'Что сделать по шагам', ph: '1) оставить незакрытые задачи; 2) нейросеть пишет по каждой одну строку: что сорвалось и у кого; 3) отправить список' },
+    { id: 'result', name: 'Результат и кому', ph: 'Список просроченных задач, в общий чат отдела' },
+    { id: 'check', name: 'Где проверка человеком', ph: 'Руководитель читает список перед отправкой в чат' }
+  ],
+  agent: [
+    { id: 'goal', name: 'Цель', ph: 'Раз в месяц сравнивать цены и сроки трёх поставщиков упаковки и сводить их в таблицу' },
+    { id: 'tools', name: 'Инструменты и доступы', ph: 'Поиск в интернете, чтение сайтов, таблица. Доступа к почте нет' },
+    { id: 'level', name: 'Уровень полномочий', select: ['Читает и отвечает', 'Готовит черновик', 'Действует с подтверждением', 'Действует сам'], val: 'Готовит черновик' },
+    { id: 'stop', name: 'Стоп-правила', val: 'Ничего не отправляй и не меняй без моего подтверждения. Если данных не хватает, напиши, чего именно, и не придумывай.' },
+    { id: 'report', name: 'Как отчитаться', val: 'В конце перечисли, какие шаги сделал и откуда взял каждую цифру.' }
+  ]
+};
+
+var TIPS = {
+  chat: 'Вставьте текст в чат с нейросетью. Если задача начнёт повторяться, вернитесь к паспорту.',
+  assist: 'Вставьте текст в поле инструкции (системного промпта) ассистента и загрузите файлы. Перед тем как давать ссылку коллегам, задайте ассистенту пять проверочных вопросов.',
+  auto: 'С этим описанием идите в конструктор сценариев или к ИТ-отделу. Первые две недели просматривайте каждый результат.',
+  agent: 'Вставьте текст в инструкцию агента или в задание агентному режиму чата. Первую неделю сверяйте его результат со своим.'
+};
+
+var state = { screen: 'intro', ans: [], vals: {} };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2&nbsp;');
+  return s.replace(/ — /g, '&nbsp;— ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1&nbsp;');
+}
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+/* Куда ведут ответы: номер следующего вопроса или вид помощника */
+function walk() {
+  var q = 0;
+  for (var i = 0; i < state.ans.length; i++) {
+    var nxt = state.ans[i] ? QS[q].yes : QS[q].no;
+    if (typeof nxt === 'string') return { done: nxt, asked: i + 1 };
+    q = nxt;
+  }
+  return { next: q, asked: state.ans.length };
+}
+function typeKey() { var w = walk(); return w.done ? (w.done === 'auto2' ? 'auto' : w.done) : null; }
+
+function val(id) {
+  if (state.vals[id] !== undefined) return state.vals[id];
+  var fs = FIELDS[typeKey()];
+  for (var i = 0; i < fs.length; i++) if (fs[i].id === id) return fs[i].val || '';
+  return '';
+}
+function lc(s) { return s.length > 1 && s.charAt(1) === s.charAt(1).toLowerCase() ? s.charAt(0).toLowerCase() + s.slice(1) : s; }
+function v(id, name) { var s = val(id).trim(); return s ? lc(s.replace(/[.\s]+$/, '')) : '[' + name.toLowerCase() + ']'; }
+
+function passport() {
+  var t = typeKey(), f = {};
+  FIELDS[t].forEach(function (x) { f[x.id] = v(x.id, x.name); });
+  if (t === 'chat')
+    return 'Задача: ' + f.task + '.\nКонтекст: ' + f.ctx + '.\nФормат ответа: ' + f.fmt + '.';
+  if (t === 'assist')
+    return 'Ты — ' + f.role + '.\nТвоя задача — ' + f.skills + '.\nОпирайся только на файлы из базы знаний: ' + f.files + '.\nПравила работы: ' + f.rules + '.\nНельзя: ' + f.no + '.';
+  if (t === 'auto')
+    return 'Когда: ' + f.when + '.\nВзять данные: ' + f.src + '.\nСделать: ' + f.steps + '.\nРезультат и кому: ' + f.result + '.\nПроверка человеком: ' + f.check + '.';
+  return 'Цель: ' + f.goal + '.\nИнструменты и доступы: ' + f.tools + '.\nУровень полномочий: ' + f.level.toLowerCase() + '.\nСтоп-правила: ' + f.stop + '.\nОтчёт: ' + f.report + '.';
+}
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">Паспорт <span>помощника</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Возьмите свою задачу, которую вы делаете каждую неделю или месяц. Ответьте на четыре вопроса и узнаете, какой помощник для неё подойдёт. Потом заполните паспорт: получится текст инструкции, сценария или задания, который можно вставить в любой сервис.</p>'
+    + '<p class="lead-text mt-sm">Паспорт пригодится на практике: сохраните его.</p>'
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="go(\'tree\')">Начать →</button>';
+}
+
+function renderTree() {
+  var w = walk(), qs = '', q = 0;
+  for (var i = 0; i <= state.ans.length && i < QS.length; i++) {
+    var a = state.ans[i];
+    qs += '<div class="q"><div class="q__text"><span class="q__n">' + (q + 1) + '</span>' + QS[q].text + '</div><div class="yn">'
+      + '<div class="card card--interactive chip' + (a === true ? ' card--selected' : '') + '" onclick="answer(' + i + ',true)">Да</div>'
+      + '<div class="card card--interactive chip' + (a === false ? ' card--selected' : '') + '" onclick="answer(' + i + ',false)">Нет</div></div></div>';
+    if (a === undefined) break;
+    var nxt = a ? QS[q].yes : QS[q].no;
+    if (typeof nxt === 'string') break;
+    q = nxt;
+  }
+  var res = '';
+  if (w.done) {
+    var t = TYPES[w.done];
+    res = '<div class="feedback feedback--info type"><div class="feedback__head">Подойдёт: ' + t.name + '</div>' + t.why + '</div>';
+  }
+  return '<div class="screen__body">'
+    + '<div class="label">Шаг 1 из 3. Какой помощник нужен</div>'
+    + qs + res
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="go(\'form\')"' + (w.done ? '' : ' disabled') + '>Заполнить паспорт →</button>';
+}
+
+function renderForm() {
+  var t = typeKey(), fs = FIELDS[t], s = '';
+  for (var i = 0; i < fs.length; i++) {
+    var f = fs[i];
+    s += '<div class="field"><div class="field__name">' + f.name + '</div>';
+    if (f.select) {
+      s += '<select oninput="setVal(\'' + f.id + '\',this.value)">';
+      for (var k = 0; k < f.select.length; k++) s += '<option' + (val(f.id) === f.select[k] ? ' selected' : '') + '>' + f.select[k] + '</option>';
+      s += '</select>';
+    } else {
+      s += '<textarea rows="2" placeholder="Например: ' + esc(f.ph || '') + '" oninput="setVal(\'' + f.id + '\',this.value)">' + esc(val(f.id)) + '</textarea>';
+    }
+    s += '</div>';
+  }
+  return '<div class="screen__body">'
+    + '<div class="label">Шаг 2 из 3. Паспорт: ' + TYPES[t].name.toLowerCase() + '</div>'
+    + '<p class="lead-text">Заполните поля своими словами. Часть полей уже заполнена: поправьте их под себя. Пустые поля в паспорте останутся в квадратных скобках.</p>'
+    + s
+    + '</div>'
+    + '<div class="btn-row"><button class="btn btn--secondary" onclick="go(\'tree\')">← Назад</button>'
+    + '<button class="btn btn--primary" onclick="go(\'done\')">Собрать паспорт →</button></div>';
+}
+
+function renderDone() {
+  var t = typeKey();
+  return '<div class="screen__body">'
+    + '<div class="label">Шаг 3 из 3. Ваш паспорт: ' + TYPES[t].name.toLowerCase() + '</div>'
+    + '<div class="out" id="out">' + esc(passport()) + '</div>'
+    + '<div class="copied" id="copied"></div>'
+    + '<p class="tip">' + TIPS[t] + '</p>'
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-sm" onclick="copyOut()">Скопировать паспорт</button>'
+    + '<div class="btn-row"><button class="btn btn--secondary" onclick="go(\'form\')">← Изменить</button>'
+    + '<button class="btn btn--secondary" onclick="restart()">Пройти заново</button></div>';
+}
+
+function render(still) {
+  var r = { intro: renderIntro, tree: renderTree, form: renderForm, done: renderDone }[state.screen];
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen' + (still ? '' : ' anim-fade-up') + '">' + nb(r()) + '</div>';
+  notifyHeight();
+}
+
+function answer(i, yes) {
+  if (state.ans[i] === yes) return;
+  state.ans = state.ans.slice(0, i);
+  state.ans[i] = yes;
+  state.vals = {};
+  render(true);
+}
+function setVal(id, s) { state.vals[id] = s; }
+function go(s) { state.screen = s; render(); }
+function restart() { state.screen = 'intro'; state.ans = []; state.vals = {}; render(); }
+
+function copyOut() {
+  var text = passport(), done = function () { document.getElementById('copied').textContent = 'Скопировано. Вставьте паспорт в сервис или сохраните в заметках.'; };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+  } else { fallbackCopy(text); done(); }
+}
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+render();
+</script>
+</body>
+</html>

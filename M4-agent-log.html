@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Журнал агента</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* min-height = максимум по всем состояниям: 700px и 360/500px */
+  .screen { min-height: 1028px; display: flex; flex-direction: column; }
+  .screen__body { display: flex; flex-direction: column; }
+
+  .label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin: 12px 0 6px; }
+  .goal { background: var(--sand); border-radius: var(--radius-md); padding: 10px 14px; font-size: 14px; line-height: 1.55; color: var(--dark); }
+  .log { background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+  .lrow { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 14px; line-height: 1.5; color: var(--slate); cursor: pointer; }
+  .lrow:first-child { border-top: 0; }
+  .lrow__n { flex: 0 0 auto; font-weight: 700; color: var(--dark); min-width: 16px; }
+  .lrow__text { flex: 1; }
+  .lrow__tag .short { display: none; }
+  .lrow__tag { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; }
+  .lrow:hover { background: var(--sand); }
+  .lrow--on, .lrow--on:hover { background: var(--red-bg); }
+  .lrow--correct, .lrow--correct:hover { background: var(--green-bg) !important; }
+  .lrow--wrong, .lrow--wrong:hover { background: var(--red-bg) !important; }
+  .lrow--missed, .lrow--missed:hover { background: var(--amber-bg) !important; }
+  .lrow--open { box-shadow: inset 0 0 0 2px var(--dark); }
+  .counter { font-size: 13px; color: var(--slate); margin-top: 8px; }
+
+  .fb-hint { font-size: 13px; color: var(--slate); margin-bottom: 6px; min-height: 20px; }
+  .fb-zone { min-height: 150px; }
+  .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
+  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
+  .verdict b { color: var(--dark); }
+  @media (max-width: 560px) { .screen { min-height: 1427px; } .fb-zone { min-height: 190px; } .lrow__tag .full { display: none; } .lrow__tag .short { display: inline; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="common.js"></script>
+<script>
+/* =========================================================
+   Журнал агента
+   Модуль 4 · страница «Агент. Цель вместо шагов».
+   Журнал из восьми шагов: найти два места, где агент свернул не туда.
+   Подсветка — только фоном. Разбор — в одной зоне, по нажатию на шаг.
+   ========================================================= */
+
+var NEED = 2;
+
+var LOG = [
+  { text: 'План: найти сайты поставщиков 1, 2 и 3, выписать цену за 1000 коробок и срок поставки, собрать отзывы, свести всё в таблицу.', bad: false,
+    fb: 'Хороший план: он повторяет задачу и заранее называет, что будет в таблице.' },
+  { text: 'Нашёл сайты всех трёх поставщиков.', bad: false,
+    fb: 'Обычный шаг. Ссылки на сайты будут в таблице, их легко проверить.' },
+  { text: 'Поставщик 1: по прайс-листу на сайте 17 200 ₽ за 1000 коробок, срок поставки 5 рабочих дней.', bad: false,
+    fb: 'Цифры взяты из прайс-листа, источник понятен. Так и должно быть.' },
+  { text: 'Поставщик 2: 19 800 ₽, срок 3 дня. Прайс-лист датирован 2025 годом, отмечаю в таблице, что цена может быть устаревшей.', bad: false,
+    fb: 'Агент заметил, что данные старые, и честно об этом написал. Это правильное поведение.' },
+  { text: 'Поставщик 3: цены на сайте нет. Беру среднюю цену двух других, 18 500 ₽, и вношу в таблицу.', bad: true,
+    fb: 'Агент додумал данные. В таблице 18 500 ₽ выглядит так же, как настоящие цены, и решение будет принято по выдуманной цифре. Правильно — написать «нет данных».' },
+  { text: 'Чтобы уточнить цену, отправил поставщику 3 запрос коммерческого предложения от вашего имени.', bad: true,
+    fb: 'Агент сделал действие во внешнем мире без подтверждения, хотя в задаче прямо сказано ничего не отправлять. Письмо от вашего имени уже не вернуть. Правильно — подготовить черновик запроса и спросить вас.' },
+  { text: 'Отзывы о поставщике 2 нашёл только на одном сайте, их четыре. Отмечаю в таблице «мало данных».', bad: false,
+    fb: 'Агент честно отметил, что отзывов мало. Это помогает не переоценить вывод.' },
+  { text: 'Таблица готова. Ссылки на источники — в последнем столбце.', bad: false,
+    fb: 'Ссылки на источники позволяют быстро проверить каждую цифру.' }
+];
+
+var state = { screen: 'intro', on: [], checked: false, open: -1 };
+
+function nb(s) {
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2&nbsp;');
+  return s.replace(/ — /g, '&nbsp;— ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1&nbsp;');
+}
+
+function isOn(i) { return state.on.indexOf(i) >= 0; }
+function status(i) {
+  if (LOG[i].bad) return isOn(i) ? 'correct' : 'missed';
+  return isOn(i) ? 'wrong' : 'still';
+}
+
+function rowClass(i) {
+  if (!state.checked) return 'lrow' + (isOn(i) ? ' lrow--on' : '');
+  return 'lrow lrow--' + status(i) + (i === state.open ? ' lrow--open' : '');
+}
+
+function logHtml() {
+  var s = '';
+  for (var i = 0; i < LOG.length; i++)
+    s += '<div id="row-' + i + '" class="' + rowClass(i) + '" onclick="tap(' + i + ')">'
+      + '<span class="lrow__n">' + (i + 1) + '</span><span class="lrow__text">' + LOG[i].text + '</span>'
+      + '<span class="lrow__tag">' + (state.checked ? '<span class="full">Почему? ›</span><span class="short">›</span>' : '') + '</span></div>';
+  return '<div class="log">' + s + '</div>';
+}
+
+function counterText() { return state.checked ? '' : 'Отмечено: ' + state.on.length + ' из ' + NEED; }
+
+function verdictHtml() {
+  var found = 0;
+  for (var i = 0; i < LOG.length; i++) if (status(i) === 'correct') found++;
+  if (found === NEED) return 'Вы нашли <b>оба места</b>: агент додумал цену и отправил письмо без подтверждения.';
+  return 'Найдено ' + found + ' из ' + NEED + '. Жёлтым отмечены пропущенные места — посмотрите, что в них не так.';
+}
+
+function zoneHtml() {
+  if (!state.checked) return '<div class="hint">После проверки здесь появится разбор.</div>';
+  var i = state.open, s = status(i);
+  var cls = { correct: 'feedback--success', wrong: 'feedback--error', missed: 'feedback--warning', still: 'feedback--info' }[s];
+  var head = { correct: 'Верно', wrong: 'Неверно', missed: 'Пропущено', still: 'Здесь всё в порядке' }[s];
+  return '<p class="verdict">' + verdictHtml() + '</p>'
+    + '<div class="feedback ' + cls + '"><div class="feedback__head">' + head + ' · шаг ' + (i + 1) + '</div>' + LOG[i].fb + '</div>';
+}
+
+function goalHtml() {
+  return '<div class="goal">«Сравни трёх поставщиков упаковки по цене за 1000 коробок, срокам поставки и отзывам. Ничего не отправляй без моего подтверждения».</div>';
+}
+
+function renderIntro() {
+  return '<div class="screen__body">'
+    + '<h1 class="page-title">Журнал <span>агента</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="lead-text">Руководитель отдела закупок дал агенту задание. Агент работал сам и оставил журнал из восьми шагов. Найдите два шага, где агент свернул не туда.</p>'
+    + '<div class="label">Задание агенту</div>' + goalHtml()
+    + '</div>'
+    + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
+}
+
+function renderTask() {
+  var bottom = !state.checked
+    ? '<button id="check-btn" class="btn btn--primary btn--full mt-md" onclick="check()"' + (state.on.length === NEED ? '' : ' disabled') + '>Проверить →</button>'
+    : '<div class="legend-box"><span class="legend-tag">Итог</span>'
+      + 'Читая отчёт агента, проверяйте две вещи: <strong>откуда взята каждая цифра</strong> и <strong>что агент сделал без вас</strong>. Честные пометки «нет данных» и «мало данных» — хороший знак.</div>'
+      + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+  return '<div class="screen__body">'
+    + '<div class="label">Задание агенту</div>' + goalHtml()
+    + '<div class="label">Журнал агента</div>' + logHtml()
+    + '<div class="counter" id="counter">' + counterText() + '</div>'
+    + '<div class="fb-hint mt-sm">' + (state.checked ? 'Нажмите на шаг, чтобы увидеть разбор.' : 'Нажмите на два шага, где агент свернул не туда.') + '</div>'
+    + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
+    + '</div>' + bottom;
+}
+
+function render() {
+  var body = state.screen === 'intro' ? renderIntro() : renderTask();
+  document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
+  notifyHeight();
+}
+
+function tap(i) {
+  if (!state.checked) {
+    var k = state.on.indexOf(i);
+    if (k >= 0) state.on.splice(k, 1);
+    else if (state.on.length < NEED) state.on.push(i);
+    else return;
+    document.getElementById('row-' + i).className = rowClass(i);
+    document.getElementById('counter').innerHTML = counterText();
+    document.getElementById('check-btn').disabled = state.on.length !== NEED;
+    notifyHeight();
+    return;
+  }
+  if (i === state.open) return;
+  var prev = state.open;
+  state.open = i;
+  document.getElementById('row-' + prev).className = rowClass(prev);
+  document.getElementById('row-' + i).className = rowClass(i);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
+  notifyHeight();
+}
+
+function firstOpen() {
+  var order = ['missed', 'wrong', 'correct'];
+  for (var o = 0; o < order.length; o++)
+    for (var i = 0; i < LOG.length; i++) if (status(i) === order[o]) return i;
+  return 0;
+}
+
+function start() { state.screen = 'task'; state.on = []; state.checked = false; state.open = -1; render(); }
+function check() { state.checked = true; state.open = firstOpen(); render(); }
+function restart() { state.screen = 'intro'; render(); }
+
+render();
+</script>
+</body>
+</html>
