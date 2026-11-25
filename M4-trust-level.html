@@ -7,29 +7,38 @@
 <link rel="stylesheet" href="styles.css">
 <style>
   /* min-height = максимум по всем состояниям: 700px и 360/500px */
-  .screen { min-height: 1000px; display: flex; flex-direction: column; }
+  .screen { min-height: 777px; display: flex; flex-direction: column; }
   .screen__body { display: flex; flex-direction: column; }
 
-  .levels { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; background: var(--sand); border-radius: var(--radius-md); padding: 10px 14px; font-size: 13px; line-height: 1.45; color: var(--slate); margin-top: 8px; }
-  .levels b { color: var(--dark); }
-  .row { margin-top: 8px; padding: 8px 12px; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius-md); }
-  .row__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-  .row__name { font-size: 14px; font-weight: 600; color: var(--dark); line-height: 1.45; }
-  .why-tag { font-size: 12px; font-weight: 600; color: var(--dark); white-space: nowrap; }
-  .row--click { cursor: pointer; }
-  .row--click:hover { background: var(--sand); }
-  .row--open { box-shadow: 0 0 0 2px var(--dark); }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-  .chip { padding: 5px 10px; font-size: 12.5px; line-height: 1.3; color: var(--dark); border-radius: 18px; }
-  .chip.card--selected { border-color: var(--red); background: var(--red-bg); }
-  .chip--locked { cursor: inherit; pointer-events: none; }
+  .label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--slate); margin: 14px 0 6px; }
+  .task { font-family: var(--font-display); font-size: 21px; line-height: 1.3; font-weight: 700; color: var(--dark); margin: 4px 0 2px; }
+  .opts { display: flex; flex-direction: column; gap: 8px; }
+  .opt { padding: 11px 14px; font-size: 14px; line-height: 1.5; color: var(--slate); }
+  .opt__name { display: block; font-size: 15px; font-weight: 700; color: var(--dark); margin-bottom: 2px; }
+  .opt__n { color: var(--red); margin-right: 6px; }
 
-  .fb-hint { font-size: 13px; color: var(--slate); margin-bottom: 6px; min-height: 20px; }
-  .fb-zone { min-height: 140px; }
+  .levels { display: flex; flex-direction: column; gap: 6px; }
+  .lv { display: flex; gap: 10px; align-items: baseline; background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 9px 12px; font-size: 14px; line-height: 1.45; color: var(--slate); }
+  .lv b { color: var(--dark); }
+  .lv__n { flex: 0 0 auto; font-weight: 700; color: var(--red); }
+
+  .fb-zone { min-height: 128px; margin-top: 12px; }
   .fb-zone .hint { font-size: 13px; color: var(--slate); text-align: center; padding: 18px 10px; border: 1.5px dashed var(--border); border-radius: var(--radius-md); }
-  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin-bottom: 8px; }
+
+  .sum { display: flex; flex-direction: column; gap: 6px; }
+  .sum__row { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; padding: 8px 12px; border-radius: var(--radius-md); font-size: 14px; line-height: 1.45; color: var(--dark); }
+  .sum__row--ok { background: var(--green-bg); }
+  .sum__row--warn { background: var(--amber-bg); }
+  .sum__row--bad { background: var(--red-bg); }
+  .sum__lvl { flex: 0 0 auto; font-size: 13px; font-weight: 600; text-align: right; color: var(--slate); max-width: 48%; }
+  .verdict { font-size: 14px; line-height: 1.6; color: var(--slate); margin: 4px 0 2px; }
   .verdict b { color: var(--dark); }
-  @media (max-width: 560px) { .screen { min-height: 1575px; } .levels { grid-template-columns: 1fr; } .fb-zone { min-height: 190px; } }
+
+  @media (max-width: 560px) {
+    .screen { min-height: 933px; }
+    .task { font-size: 19px; }
+    .fb-zone { min-height: 150px; }
+    }
 </style>
 </head>
 <body>
@@ -39,171 +48,203 @@
 /* =========================================================
    Сколько доверить помощнику
    Модуль 4 · страница «Сколько доверять помощнику».
-   Классификация: задача → уровень полномочий помощника.
-   Зелёный — лучший уровень, жёлтый — допустимо (лишний контроль), красный — неверно.
+   Шесть задач, каждая на своём экране. Для каждой три уровня полномочий
+   с примером того, как на этом уровне выглядит доступ.
+   Зелёный — верно, жёлтый — допустимо, но не лучший вариант, красный — неверно.
    ========================================================= */
 
-var LEVELS = ['1. Читает', '2. Черновик', '3. С подтверждением', '4. Сам'];
-var LSHORT = ['читает и отвечает', 'готовит черновик', 'действует с подтверждением', 'действует сам'];
+var LEVELS = ['Только готовит', 'Делает после вашего «да»', 'Делает сам'];
+var LEVEL_DESC = [
+  'Отвечает, считает, пишет. Отправить или изменить что-то сам не может.',
+  'Готовит действие и выполняет его, когда вы подтвердите.',
+  'Действует без вас и присылает отчёт о сделанном.'
+];
 
-var ROWS = [
-  { name: 'Раскладывать входящие письма по папкам: клиенты, коллеги, рассылки', right: 3, warn: 2,
+/* right — верный уровень, warn — допустимый (жёлтый), -1 если нет */
+var TASKS = [
+  { short: 'Разложить письма по папкам', name: 'Раскладывать входящие письма по папкам: клиенты, коллеги, рассылки', right: 2, warn: 1,
+    opts: [
+      'Помощник читает входящие и присылает список: какое письмо в какую папку. Раскладываете вы.',
+      'Помощник раскладывает письма, но перед каждым спрашивает: «Перенести в папку „Клиенты“?»',
+      'Помощник сам перемещает письма по папкам и раз в день присылает, что куда разложил.'
+    ],
     fb: [
-      'Помощник подскажет, куда разложить письма, но раскладывать всё равно придётся вам. Это действие легко отменить, его можно доверить целиком.',
-      'Черновик здесь не нужен: письма нужно просто разложить. Это действие легко отменить, его можно доверить помощнику целиком.',
-      'Подтверждать каждое письмо — лишняя работа. Письмо в не той папке легко переложить, это можно доверить помощнику.',
-      'Действие легко отменить, и ошибка почти ничего не стоит. Достаточно иногда заглядывать в отчёт.'
+      ['Неверно · помощник почти не помогает', 'Письма так и лежат неразобранными, пока вы не разложите их по списку. Ошибка здесь почти ничего не стоит: письмо в не той папке легко переложить.'],
+      ['Допустимо, но…', 'Подтверждать каждое письмо — почти та же ручная работа. Результат видите только вы, и его легко исправить, поэтому задачу можно доверить целиком.'],
+      ['Верно · можно доверить целиком', 'Результат видите только вы, а письмо в не той папке легко переложить. Достаточно иногда заглядывать в отчёт.']
     ] },
-  { name: 'Отвечать клиентам на жалобы по почте', right: 1, warn: 2,
+  { short: 'Оплатить счета поставщиков', name: 'Оплачивать счета поставщиков', right: 0, warn: 1,
+    opts: [
+      'Помощник сверяет счета с договорами и готовит список платежей. Платежи в банке создаёте вы.',
+      'Помощник создаёт платежи в банке, а вы подтверждаете каждый кодом из СМС.',
+      'Помощник сам оплачивает счета до 50 000 ₽ и раз в неделю присылает выписку.'
+    ],
     fb: [
-      'Справка о жалобе задачу не решит: клиенту нужен ответ. Подходит черновик, который вы проверите и отправите сами.',
-      'Письмо уходит клиенту, вернуть его нельзя. Помощник готовит черновик, вы правите и отправляете сами.',
-      'Подтверждение одной кнопкой легко превращается в привычку нажимать не читая. Для писем клиентам надёжнее черновик, который вы отправляете сами.',
-      'Письмо клиенту нельзя отменить, а ошибка в тоне или сроке дорого стоит. Отправлять такие письма сам помощник не должен.'
+      ['Верно · доступа к банку нет', 'Деньги, ушедшие поставщику, вернуть трудно. Помощник берёт на себя сверку, а платёж создаёте вы и видите каждую сумму.'],
+      ['Допустимо, но…', 'Ввод кода из СМС быстро становится привычкой: его вводят, не глядя на сумму и получателя. Для денег надёжнее, чтобы у помощника не было доступа к банку.'],
+      ['Неверно · платёж не отменить', 'Ошибка в реквизитах стоит всей суммы, и вернуть её трудно. Даже с лимитом помощник не должен платить сам.']
     ] },
-  { name: 'Сравнить условия трёх договоров аренды и выписать различия', right: 0, warn: 1,
+  { short: 'Назначить собеседования', name: 'Назначать собеседования с кандидатами на свободное время в вашем календаре', right: 1, warn: 0,
+    opts: [
+      'Помощник подбирает три свободных окна и пишет текст приглашения. Отправляете его вы.',
+      'Помощник готовит приглашение и спрашивает: «Кандидат на должность бухгалтера, четверг, 15:00. Отправить?»',
+      'Помощник видит ваш календарь и сам рассылает кандидатам приглашения на свободное время.'
+    ],
     fb: [
-      'Помощник читает документы и отвечает, ничего не меняя. Вы выборочно сверяете различия с договорами.',
-      'Черновик здесь не нужен: сравнение — это уже готовый ответ, его никто никуда не отправляет.',
-      'Помощник ничего не делает во внешних системах, он только читает договоры. Подтверждать нечего.',
-      'Действий здесь нет, только чтение. Важнее другое: договоры — конфиденциальные документы, сначала проверьте, можно ли загружать их в сервис.'
+      ['Допустимо, но…', 'Так безопасно, но приглашения по-прежнему отправляете вы. Ошибку в дате можно исправить вторым письмом, поэтому достаточно подтверждать готовое приглашение.'],
+      ['Верно · нужно ваше «да»', 'Приглашение увидит человек вне компании, поэтому перед отправкой нужно ваше подтверждение. Ошибку можно исправить, поэтому отправлять вручную не обязательно.'],
+      ['Неверно · кандидат увидит ошибку первым', 'Приглашение сразу уходит кандидату. Если помощник ошибётся с датой или займёт время, которое вы держали для другого, кандидат узнает об этом раньше вас.']
     ] },
-  { name: 'Назначать встречи с кандидатами в свободные окна вашего календаря', right: 2, warn: 1,
+  { short: 'Внести поручения в список задач', name: 'Вносить в ваш личный список задач поручения, которые вы получили на совещаниях', right: 2, warn: 1,
+    opts: [
+      'После совещания помощник присылает список поручений. В свой список задач их вносите вы.',
+      'Помощник предлагает задачу и ждёт ответа: «Добавить „Отчёт для финансового отдела“ на пятницу?»',
+      'Помощник сам добавляет поручения в ваш список задач и присылает, что добавил.'
+    ],
     fb: [
-      'Справка о свободных окнах встречу не назначит. Помощник должен действовать: отправлять приглашения.',
-      'Отправлять каждое приглашение вручную долго. Достаточно подтверждать готовое приглашение одной кнопкой.',
-      'Приглашение увидит кандидат, поэтому перед отправкой нужно ваше подтверждение. Зато искать окна вручную больше не придётся.',
-      'Приглашение уходит человеку вне компании. Если помощник ошибётся с датой или пригласит не того, это сразу заметят. Без подтверждения здесь нельзя.'
+      ['Неверно · помощник почти не помогает', 'Вы переписываете список вручную, и времени почти не экономите. Список задач видите только вы, лишнюю задачу легко удалить.'],
+      ['Допустимо, но…', 'Подтверждать каждую задачу долго. Ошибку здесь видите только вы, и исправляется она в одно нажатие.'],
+      ['Верно · можно доверить целиком', 'Список задач личный: лишнюю задачу легко удалить, а пропущенную — заметить в отчёте помощника.']
     ] },
-  { name: 'Менять сумму сделки в CRM-системе по письмам клиентов', right: 2, warn: 1,
+  { short: 'Подписать акты подрядчиков', name: 'Подписывать акты выполненных работ с подрядчиками в системе электронного документооборота', right: 0, warn: -1,
+    opts: [
+      'Помощник сверяет акты с договорами и пишет, что не совпадает. Подписываете вы своей электронной подписью.',
+      'Помощник получает доступ к вашей электронной подписи и подписывает акт после вашего «да».',
+      'Помощник сам подписывает акты, которые совпали с договором, и присылает список подписанного.'
+    ],
     fb: [
-      'Справка сделку не изменит, а задача именно в этом. Нужен уровень, на котором помощник действует.',
-      'Вы сами вносите изменения по подготовленным данным — так можно. Но если писем много, удобнее подтверждать готовое изменение.',
-      'Сумма сделки влияет на план и премии, ошибку потом трудно заметить. Помощник готовит изменение, вы его подтверждаете.',
-      'Помощник может неверно прочитать письмо и изменить сумму, а заметят это только при закрытии месяца. Сам менять сделки он не должен.'
+      ['Верно · подпись остаётся вашей', 'Подписанный акт — основание для оплаты, отозвать его трудно. Помощник берёт на себя сверку, а подписываете вы.'],
+      ['Неверно · подпись нельзя передавать', 'Электронная подпись — ваша личная, как подпись ручкой. Передавать её помощнику нельзя, даже если он спрашивает перед каждым документом.'],
+      ['Неверно · подпись не отозвать', 'Помощник может не заметить расхождение в объёме работ, а подписанный акт уже уйдёт на оплату. И электронную подпись передавать ему нельзя.']
     ] },
-  { name: 'Готовить для вас сводку продаж за неделю', right: 0, warn: 1,
+  { short: 'Ответить клиентам о доставке', name: 'Отвечать клиентам на типовые вопросы о сроках доставки', right: 1, warn: 0,
+    opts: [
+      'Помощник пишет ответ и кладёт его в черновики почты. Открываете и отправляете его вы.',
+      'Помощник показывает ответ рядом с письмом клиента. Вы читаете его и нажимаете «Отправить».',
+      'Помощник сразу отвечает клиентам, а ответы вы видите в папке «Отправленные».'
+    ],
     fb: [
-      'Сводку читаете только вы, помощник ничего не меняет и никуда не отправляет. Достаточно иногда сверять цифры.',
-      'Сводка для вас и так черновик: вы её читаете, а не отправляете. Отдельный уровень «черновик» здесь не нужен.',
-      'Подтверждать нечего: помощник ничего не отправляет и не меняет.',
-      'Действовать самому помощнику здесь не нужно: он только считает и пишет сводку для вас.'
+      ['Допустимо, но…', 'Так можно, но времени уходит больше, а читаете вы ответ так же. Вопросы типовые, ошибку можно исправить вторым письмом.'],
+      ['Верно · нужно ваше «да»', 'Ответ увидит клиент, поэтому перед отправкой нужно ваше подтверждение. Вопросы типовые, и ошибку можно исправить вторым письмом.'],
+      ['Неверно · клиент увидит ошибку первым', 'Клиент получит ответ раньше, чем его прочитаете вы. Если помощник пообещает не тот срок, отвечать за это будете вы.']
     ] }
 ];
 
-var state = { screen: 'intro', pick: [], checked: false, open: -1 };
+var state = { screen: 'intro', t: 0, pick: [] };
 
 function nb(s) {
-  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"])([а-яёА-ЯЁ]{1,2}) /g, '$1$2&nbsp;');
+  for (var k = 0; k < 2; k++) s = s.replace(/(^|[\s>(«"„])([а-яёА-ЯЁ]{1,2}) /g, '$1$2&nbsp;');
   return s.replace(/ — /g, '&nbsp;— ').replace(/(\d) (?=\d|[а-яё₽%])/g, '$1&nbsp;');
 }
 
-function grade(i) { var p = state.pick[i]; return p === ROWS[i].right ? 'ok' : (p === ROWS[i].warn ? 'warn' : 'bad'); }
-function allPicked() { for (var i = 0; i < ROWS.length; i++) if (state.pick[i] === undefined) return false; return true; }
-
-function chipClass(i, a) {
-  var p = state.pick[i];
-  if (!state.checked) return 'card card--interactive chip' + (p === a ? ' card--selected' : '');
-  if (a === ROWS[i].right) return 'card chip chip--locked card--correct';
-  if (a === p) return 'card chip chip--locked ' + (a === ROWS[i].warn ? 'card--warning' : 'card--wrong');
-  return 'card chip chip--locked card--dimmed';
+function kind(t, a) {
+  if (a === TASKS[t].right) return 'ok';
+  if (a === TASKS[t].warn) return 'warn';
+  return 'bad';
 }
-function rowClass(i) { return !state.checked ? 'row' : 'row row--click' + (i === state.open ? ' row--open' : ''); }
 
-function rowHtml(i) {
-  var chips = '';
-  for (var a = 0; a < LEVELS.length; a++)
-    chips += '<div class="' + chipClass(i, a) + '" onclick="choose(' + i + ',' + a + ')">' + LEVELS[a] + '</div>';
-  return '<div id="row-' + i + '" class="' + rowClass(i) + '" onclick="openRow(' + i + ')">'
-    + '<div class="row__head"><span class="row__name">' + ROWS[i].name + '</span>'
-    + (state.checked ? '<span class="why-tag">Почему? ›</span>' : '') + '</div>'
-    + '<div class="chips" id="chips-' + i + '">' + chips + '</div></div>';
+function optClass(t, a) {
+  var p = state.pick[t];
+  if (p === undefined) return 'card card--interactive opt';
+  if (a === p) return 'card card--interactive opt ' + { ok: 'card--correct', warn: 'card--warning', bad: 'card--wrong' }[kind(t, a)];
+  return 'card card--interactive opt';
+}
+
+function zoneHtml(t) {
+  var p = state.pick[t];
+  if (p === undefined) return '<div class="hint">Выберите уровень, и здесь появится разбор.</div>';
+  var k = kind(t, p), f = TASKS[t].fb[p];
+  var cls = { ok: 'feedback--success', warn: 'feedback--warning', bad: 'feedback--error' }[k];
+  var extra = k === 'ok' ? '' : ' Лучше всего здесь подходит уровень «' + LEVELS[TASKS[t].right].toLowerCase().replace('«да»', '„да“') + '».';
+  return '<div class="feedback ' + cls + '"><div class="feedback__head">' + f[0] + '</div>' + f[1] + extra + '</div>';
+}
+
+function progressHtml() {
+  var n = state.t + 1;
+  return '<div class="progress"><div class="progress__meta"><span class="progress__label">Задача</span>'
+    + '<span class="progress__fraction"><em>' + n + '</em> / ' + TASKS.length + '</span></div>'
+    + '<div class="progress__track"><div class="progress__fill" style="width:' + (n / TASKS.length * 100) + '%"></div></div></div>';
 }
 
 function levelsHtml() {
-  return '<div class="levels">'
-    + '<div><b>1. Читает и отвечает.</b> Ничего не меняет.</div>'
-    + '<div><b>2. Готовит черновик.</b> Вы проверяете и отправляете сами.</div>'
-    + '<div><b>3. Действует с подтверждением.</b> Вы нажимаете «Подтвердить» перед каждым действием.</div>'
-    + '<div><b>4. Действует сам.</b> Вы смотрите отчёт о сделанном.</div></div>';
-}
-
-function verdictHtml() {
-  var bad = 0, warn = 0;
-  for (var j = 0; j < ROWS.length; j++) { var g = grade(j); if (g === 'bad') bad++; if (g === 'warn') warn++; }
-  if (!bad && !warn) return 'Вы <b>точно выбираете уровень</b>: доверяете там, где ошибку легко исправить, и оставляете контроль там, где нельзя.';
-  if (!bad) return 'Рискованных решений нет. Жёлтым отмечены задачи, где контроля больше, чем нужно.';
-  return 'Посмотрите задачи, отмеченные красным: где-то помощнику <b>доверено слишком много</b> или он не сможет сделать работу.';
-}
-
-function zoneHtml() {
-  if (!state.checked) return '<div class="hint">После проверки здесь появится разбор.</div>';
-  var i = state.open, r = ROWS[i], g = grade(i);
-  var cls = { ok: 'feedback--success', warn: 'feedback--warning', bad: 'feedback--error' }[g];
-  var head = { ok: 'Верно', warn: 'Допустимо, но…', bad: 'Неверно' }[g] + ' · лучше всего — ' + LSHORT[r.right];
-  return '<p class="verdict">' + verdictHtml() + '</p>'
-    + '<div class="feedback ' + cls + '"><div class="feedback__head">' + head + '</div>' + r.fb[state.pick[i]] + '</div>';
+  var s = '';
+  for (var i = 0; i < LEVELS.length; i++)
+    s += '<div class="lv"><span class="lv__n">' + (i + 1) + '</span><span><b>' + LEVELS[i] + '.</b> ' + LEVEL_DESC[i] + '</span></div>';
+  return '<div class="levels">' + s + '</div>';
 }
 
 function renderIntro() {
   return '<div class="screen__body">'
     + '<h1 class="page-title">Сколько доверить <span>помощнику</span></h1>'
     + '<div class="divider"></div>'
-    + '<p class="lead-text">Шесть задач, которые руководитель хочет отдать ИИ-помощнику. Для каждой выберите уровень полномочий: сколько помощник может делать без вас.</p>'
-    + levelsHtml()
+    + '<p class="lead-text">Шесть задач для ИИ-помощника. Для каждой выберите, какой доступ ему дать. Варианты описаны так, как это выглядело бы в работе.</p>'
+    + '<div class="label">Три уровня полномочий</div>' + levelsHtml()
     + '</div>'
     + '<button class="btn btn--primary btn--full mt-md" onclick="start()">Начать →</button>';
 }
 
 function renderTask() {
-  var rows = '';
-  for (var i = 0; i < ROWS.length; i++) rows += rowHtml(i);
-  var bottom = !state.checked
-    ? '<button id="check-btn" class="btn btn--primary btn--full mt-md" onclick="check()"' + (allPicked() ? '' : ' disabled') + '>Проверить →</button>'
-    : '<div class="legend-box"><span class="legend-tag">Итог</span>'
-      + 'Уровень решают два вопроса: <strong>можно ли отменить действие</strong> и <strong>кто увидит результат</strong>. Если отменить нельзя или результат увидят клиенты, не поднимайтесь выше уровня «действует с подтверждением».</div>'
-      + '<button class="btn btn--secondary btn--full" onclick="restart()">Пройти заново</button>';
+  var t = state.t, T = TASKS[t], s = '';
+  for (var a = 0; a < LEVELS.length; a++)
+    s += '<div id="opt-' + a + '" class="' + optClass(t, a) + '" onclick="pick(' + a + ')">'
+      + '<span class="opt__name"><span class="opt__n">' + (a + 1) + '</span>' + LEVELS[a] + '</span>' + T.opts[a] + '</div>';
+  var last = t === TASKS.length - 1;
+  return '<div class="screen__body">' + progressHtml()
+    + '<div class="task">' + T.name + '</div>'
+    + '<div class="label">Какой доступ дать?</div>'
+    + '<div class="opts">' + s + '</div>'
+    + '<div id="fbbox" class="fb-zone">' + zoneHtml(t) + '</div>'
+    + '</div>'
+    + '<button id="next-btn" class="btn btn--primary btn--full mt-md" onclick="next()"' + (state.pick[t] === undefined ? ' disabled' : '') + '>'
+    + (last ? 'К итогам →' : 'Следующая задача →') + '</button>';
+}
+
+function renderResult() {
+  var rows = '', ok = 0;
+  for (var t = 0; t < TASKS.length; t++) {
+    var k = kind(t, state.pick[t]);
+    if (k === 'ok') ok++;
+    var lvl = k === 'ok' ? LEVELS[TASKS[t].right] : 'лучше: ' + LEVELS[TASKS[t].right].toLowerCase();
+    rows += '<div class="sum__row sum__row--' + k + '"><span>' + TASKS[t].short + '</span><span class="sum__lvl">' + lvl + '</span></div>';
+  }
+  var verdict = ok === TASKS.length
+    ? 'Вы <b>уверенно различаете</b>, когда помощнику можно действовать самому, а когда нужно ваше слово.'
+    : ok >= 4 ? 'Почти везде вы выбрали тот же уровень, что и в разборе. Жёлтым и красным отмечены задачи, где лучше подходит другой.'
+    : 'Уровни пока путаются. Жёлтым и красным отмечены задачи, где лучше подходит другой уровень. Правило — в итоге ниже.';
   return '<div class="screen__body">'
-    + '<p class="lead-text">Сколько помощник может делать без вас в каждой задаче?</p>'
-    + rows
-    + '<div class="fb-hint mt-md">' + (state.checked ? 'Нажмите на задачу, чтобы увидеть разбор.' : '') + '</div>'
-    + '<div id="fbbox" class="fb-zone">' + zoneHtml() + '</div>'
-    + '</div>' + bottom;
+    + '<h1 class="page-title">Ваши <span>решения</span></h1>'
+    + '<div class="divider"></div>'
+    + '<p class="verdict">' + verdict + '</p>'
+    + '<div class="sum mt-sm">' + rows + '</div>'
+    + '<div class="legend-box mt-md"><span class="legend-tag">Итог</span>'
+    + 'Действие нельзя отменить, и ошибка дорого стоит — помощник <strong>только готовит</strong>. '
+    + 'Результат увидят коллеги или клиенты, но ошибку можно исправить — он <strong>делает после вашего «да»</strong>. '
+    + 'Результат видите только вы, и его легко отменить — он <strong>делает сам</strong>.</div>'
+    + '</div>'
+    + '<button class="btn btn--secondary btn--full mt-md" onclick="restart()">Пройти заново</button>';
 }
 
 function render() {
-  var body = state.screen === 'intro' ? renderIntro() : renderTask();
+  var body = state.screen === 'intro' ? renderIntro() : state.screen === 'task' ? renderTask() : renderResult();
   document.getElementById('app').innerHTML = '<div class="page-wrap--compact screen anim-fade-up">' + nb(body) + '</div>';
   notifyHeight();
 }
 
-function choose(i, a) {
-  if (state.checked) return;
-  state.pick[i] = a;
-  var box = document.getElementById('chips-' + i);
-  for (var k = 0; k < box.children.length; k++) box.children[k].className = chipClass(i, k);
-  document.getElementById('check-btn').disabled = !allPicked();
+function pick(a) {
+  var t = state.t;
+  state.pick[t] = a;
+  for (var i = 0; i < LEVELS.length; i++) document.getElementById('opt-' + i).className = optClass(t, i);
+  document.getElementById('fbbox').innerHTML = nb(zoneHtml(t));
+  document.getElementById('next-btn').disabled = false;
   notifyHeight();
 }
 
-function openRow(i) {
-  if (!state.checked || i === state.open) return;
-  var prev = state.open;
-  state.open = i;
-  document.getElementById('row-' + prev).className = rowClass(prev);
-  document.getElementById('row-' + i).className = rowClass(i);
-  document.getElementById('fbbox').innerHTML = nb(zoneHtml());
-  notifyHeight();
+function next() {
+  if (state.t < TASKS.length - 1) { state.t++; render(); window.scrollTo(0, 0); }
+  else { state.screen = 'result'; render(); }
 }
 
-function firstOpen() {
-  for (var i = 0; i < ROWS.length; i++) if (grade(i) === 'bad') return i;
-  for (i = 0; i < ROWS.length; i++) if (grade(i) === 'warn') return i;
-  return 0;
-}
-
-function start() { state.screen = 'task'; state.pick = []; state.checked = false; state.open = -1; render(); }
-function check() { state.checked = true; state.open = firstOpen(); render(); }
+function start() { state.screen = 'task'; state.t = 0; state.pick = []; render(); }
 function restart() { state.screen = 'intro'; render(); }
 
 render();
